@@ -1,0 +1,17 @@
+---
+title: "BIOSC1203 Vertebrate Morphology Lab"
+---
+
+**BIOSC1203 Lab Section**
+
+Monday/Wednesday 1:00-2:45pm
+
+*In this course students will gain hands-on experience with vertebrate morphology, studying dissection specimens, skeletons, histology, and 3D digital models; learn to use software and analytical methods that are used in comparative morphology research; and pose questions and test hypotheses using comparative methods, and collect data for comparative morphology research.*
+
+```{mermaid}
+flowchart LR
+  A[3D Slicer] --> B(Morphological Data)
+  B --> C{Landmark Data}
+  C --> D[geomorph analysis]
+  C --> E[phylogenetic analysis]
+```
