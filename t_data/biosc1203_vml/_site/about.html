@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>BIOSC1203 Vertebrate Morphology Lab – biosc1203_vml</title>
+<title>BIOSC1203 Geomorphometric Analysis – biosc1203_vml</title>
 <style>
 /* Default styles provided by pandoc.
 ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
@@ -43,6 +43,11 @@ ul.task-list li input[type="checkbox"] {
 <script src="site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="site_libs/bootstrap/bootstrap-a19942f474e303d9fe7d81a17819263b.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<meta name="shinylive:serviceworker_dir" content=".">
+<script src="site_libs/quarto-contrib/shinylive-0.10.12/shinylive/load-shinylive-sw.js" type="module"></script>
+<script src="site_libs/quarto-contrib/shinylive-0.10.12/shinylive/run-python-blocks.js" type="module"></script>
+<link href="site_libs/quarto-contrib/shinylive-0.10.12/shinylive/shinylive.css" rel="stylesheet">
+<link href="site_libs/quarto-contrib/shinylive-quarto-css/shinylive-quarto.css" rel="stylesheet">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -70,6 +75,68 @@ ul.task-list li input[type="checkbox"] {
     "search-label": "Search"
   }
 }</script>
+<style>
+/* ── Tab strip spacing ───────────────────────────────────────── */
+.nav-tabs {
+  gap: 4px;
+  flex-wrap: wrap;
+  border-bottom: 2px solid #c8a96e;
+}
+.nav-tabs .nav-item { margin-bottom: -2px; }
+.nav-tabs .nav-link {
+  background-color: #f5f0e8;
+  color: #5a4a2f;
+  border: 1px solid #d4c5a0;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  padding: 6px 14px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: background-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.nav-tabs .nav-link:hover {
+  background-color: #e8dfc8;
+  color: #3b2f1a;
+  border-color: #c8a96e;
+}
+.nav-tabs .nav-link.active {
+  background-color: #8c6d3f;
+  color: #ffffff;
+  border-color: #8c6d3f;
+  border-bottom-color: #8c6d3f;
+  font-weight: 600;
+}
+.tab-content {
+  border: 1px solid #d4c5a0;
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  padding: 16px;
+  background: #ffffff;
+}
+#gpa-running {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 10px 14px;
+  background: #f5f0e8;
+  border: 1px solid #c8a96e;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: #5a4a2f;
+}
+.gpa-spinner {
+  width: 20px;
+  height: 20px;
+  border: 3px solid #d4c5a0;
+  border-top-color: #8c6d3f;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
 
 
 <link rel="stylesheet" href="styles.css">
@@ -98,7 +165,7 @@ ul.task-list li input[type="checkbox"] {
   </li>  
   <li class="nav-item">
     <a class="nav-link active" href="./about.html" aria-current="page"> 
-<span class="menu-text">BIOSC1203 Vertebrate Morphology Lab</span></a>
+<span class="menu-text">Geomorphometric Analysis</span></a>
   </li>  
 </ul>
           </div> <!-- /navcollapse -->
@@ -108,29 +175,23 @@ ul.task-list li input[type="checkbox"] {
     </nav>
 </header>
 <!-- content -->
-<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-full page-navbar">
 <!-- sidebar -->
 <!-- margin-sidebar -->
-    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
-        <nav id="TOC" role="doc-toc" class="toc-active">
-    <h2 id="toc-title">On this page</h2>
-   
-  <ul>
-  <li><a href="#upload-your-specimen" id="toc-upload-your-specimen" class="nav-link active" data-scroll-target="#upload-your-specimen">Upload Your Specimen</a></li>
-  </ul>
-</nav>
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar zindex-bottom">
+        
     </div>
 <!-- main -->
-<main class="content" id="quarto-document-content">
+<main class="content column-page" id="quarto-document-content">
 
 <header id="title-block-header" class="quarto-title-block default">
 <div class="quarto-title">
-<h1 class="title">BIOSC1203 Vertebrate Morphology Lab</h1>
+<h1 class="title">BIOSC1203 Geomorphometric Analysis</h1>
 </div>
 
 
 
-<div class="quarto-title-meta">
+<div class="quarto-title-meta column-page">
 
     
   
@@ -142,64 +203,517 @@ ul.task-list li input[type="checkbox"] {
 </header>
 
 
-<section id="upload-your-specimen" class="level2">
-<h2 class="anchored" data-anchor-id="upload-your-specimen">Upload Your Specimen</h2>
-<div id="upload-section">
-  <input type="file" id="csvFile" accept=".csv">
-  <button onclick="analyze()">Run Analysis</button>
-</div>
+<blockquote class="blockquote">
+<p><strong>First load:</strong> This page runs R in your browser via WebAssembly. Allow 30–60 seconds on first visit for packages to load.</p>
+</blockquote>
+<pre class="shinylive-r" data-engine="r"><code>#| '!! shinylive warning !!': |
+#|   shinylive does not work in self-contained HTML documents.
+#|   Please set `embed-resources: false` in your metadata.
+#| standalone: true
+#| viewerHeight: 900
 
-<div id="message" style="margin-top:1rem;"></div>
-<div id="results" style="margin-top:1rem;"></div>
+library(shiny)
+library(bslib)
 
-<script>
-const API = "https://your-app.onrender.com"
+# ── UI ────────────────────────────────────────────────────────────────────────
+ui &lt;- page_navbar(
+  title = "BIOSC1203 Geomorphometric Analysis",
+  theme = bs_theme(bootswatch = "sandstone"),
 
-// Wake server when student opens the page
-fetch(`${API}/health`)
+  # ── Section 1: CSV Upload &amp; Preview ────────────────────────────────────────
+  nav_panel("1 · Upload &amp; Preview",
+    layout_sidebar(
+      sidebar = sidebar(
+        fileInput("csv_file", "Upload CSV file",
+          accept = c(".csv", "text/csv"),
+          buttonLabel = "Browse...",
+          placeholder = "No file selected"),
+        hr(),
+        textInput("specimen_name", "Specimen name", value = "Genus_species",
+          placeholder = "e.g. Homo_sapiens"),
+        helpText("Use Genus_species format. Becomes the ID= field in TPS
+                  and the key for saving metadata."),
+        hr(),
+        h5("Column mapping"),
+        helpText("Match your CSV columns to the fields below."),
+        uiOutput("col_pickers"),
+        hr(),
+        actionButton("run_parse", "Parse landmarks",
+                     class = "btn-primary", width = "100%")
+      ),
+      conditionalPanel(
+        condition = "output.tbl_raw_ready",
+        tabsetPanel(
+          tabPanel("Raw data",                DT::DTOutput("tbl_raw")),
+          tabPanel("Parsed landmarks",        DT::DTOutput("tbl_parsed")),
+          tabPanel("Landmark classification", verbatimTextOutput("lm_summary"))
+        )
+      )
+    )
+  ),
 
-async function analyze() {
-  const file = document.getElementById("csvFile").files[0]
-  if (!file) {
-    document.getElementById("message").innerText = "Please select a file first."
-    return
+  # ── Section 2: Download TPS ─────────────────────────────────────────────────
+  nav_panel("2 · Download TPS",
+    layout_sidebar(
+      sidebar = sidebar(
+        helpText("Once landmarks are parsed, generate the TPS file."),
+        hr(),
+        downloadButton("dl_tps", "Download TPS file", class = "btn-success")
+      ),
+      h5("TPS file preview"),
+      verbatimTextOutput("tps_preview")
+    )
+  ),
+
+  # ── Section 3: Ecological Metadata ──────────────────────────────────────────
+  nav_panel("3 · Ecological Metadata",
+    layout_sidebar(
+      sidebar = sidebar(
+        h5("Load saved metadata"),
+        helpText("Enter your specimen name in Section 1, then click Load."),
+        actionButton("load_meta", "Load from specimen name", width = "100%"),
+        hr(),
+        fileInput("meta_upload", "Or reload a saved metadata CSV",
+          accept = c(".csv"), buttonLabel = "Browse..."),
+        hr(),
+        h5("Enter metadata for this specimen"),
+        textAreaInput("meta_habitat", "Habitat", rows = 3,
+          placeholder = "e.g. tropical rainforest understory, rocky arid scrubland..."),
+        textAreaInput("meta_activity", "Activity period", rows = 2,
+          placeholder = "e.g. diurnal, nocturnal, crepuscular, cathemeral..."),
+        textAreaInput("meta_locomotion", "Locomotion", rows = 3,
+          placeholder = "e.g. arboreal climbing, gliding, swimming, saltatorial..."),
+        textAreaInput("meta_notes", "Additional notes", rows = 3,
+          placeholder = "Diet, body size, observer name..."),
+        hr(),
+        actionButton("save_meta", "Save metadata",
+                     class = "btn-success", width = "100%")
+      ),
+      h5("Saved metadata for all specimens"),
+      helpText("Download this CSV to save your work. Re-upload it next session to reload."),
+      DT::DTOutput("tbl_meta"),
+      hr(),
+      downloadButton("dl_meta", "Download metadata CSV",
+                     class = "btn-outline-secondary")
+    )
+  ),
+
+  # ── Section 4: TPS Analysis ──────────────────────────────────────────────────
+  nav_panel("4 · TPS Analysis",
+    layout_sidebar(
+      sidebar = sidebar(
+        h5("Upload TPS file"),
+        helpText("Upload a TPS file with one or more specimens
+                  (LM3=n / coordinates / ID=name).
+                  Combine multiple student files into one before uploading."),
+        fileInput("tps_file", "Upload TPS file",
+          accept = c(".tps", "text/plain"),
+          buttonLabel = "Browse...",
+          placeholder = "No file selected"),
+        hr(),
+        h5("GPA settings"),
+        checkboxInput("tps_has_sliders",
+                      "Include semilandmarks as sliders?", value = TRUE),
+        selectInput("tps_procD", "Procrustes distance method",
+          choices = c("full" = "full", "orthogonal" = "orthogonal"),
+          selected = "full"),
+        hr(),
+        h5("PCA settings"),
+        numericInput("tps_n_pcs", "Number of PCs to display",
+                     value = 3, min = 2, max = 10),
+        hr(),
+        actionButton("run_tps_analysis", "Run GPA + PCA",
+                     class = "btn-primary", width = "100%"),
+        tags$div(id = "gpa-running",
+          tags$div(class = "gpa-spinner"),
+          "Running GPA + PCA — this may take a moment..."
+        )
+      ),
+      conditionalPanel(
+        condition = "output.tbl_tps_ready",
+        tabsetPanel(
+          tabPanel("Specimens in TPS",   DT::DTOutput("tbl_tps_specimens")),
+          tabPanel("GPA summary",        verbatimTextOutput("tps_gpa_summary")),
+          tabPanel("PCA scores",         DT::DTOutput("tbl_tps_pca")),
+          tabPanel("PCA plot",           plotly::plotlyOutput("plot_tps_pca",
+                                                              height = "500px")),
+          tabPanel("Variance explained", plotly::plotlyOutput("plot_tps_scree",
+                                                              height = "400px")),
+          tabPanel("Consensus shape",    plotOutput("plot_tps_consensus",
+                                                    height = "500px"))
+        )
+      )
+    )
+  )
+)
+
+# ── Server ────────────────────────────────────────────────────────────────────
+server &lt;- function(input, output, session) {
+
+  # Install packages in WebR on first run
+  if (!requireNamespace("geomorph",  quietly = TRUE)) webr::install("geomorph")
+  if (!requireNamespace("DT",        quietly = TRUE)) webr::install("DT")
+  if (!requireNamespace("ggplot2",   quietly = TRUE)) webr::install("ggplot2")
+  if (!requireNamespace("plotly",    quietly = TRUE)) webr::install("plotly")
+  if (!requireNamespace("readr",     quietly = TRUE)) webr::install("readr")
+  if (!requireNamespace("dplyr",     quietly = TRUE)) webr::install("dplyr")
+  if (!requireNamespace("stringr",   quietly = TRUE)) webr::install("stringr")
+  if (!requireNamespace("bslib",     quietly = TRUE)) webr::install("bslib")
+
+  library(geomorph)
+  library(DT)
+  library(ggplot2)
+  library(plotly)
+  library(readr)
+  library(dplyr)
+  library(stringr)
+
+  # ── helpers ─────────────────────────────────────────────────────────────────
+
+  read_csv_flexible &lt;- function(path) {
+    tryCatch({
+      df &lt;- read_csv(path, show_col_types = FALSE)
+      if (ncol(df) &lt; 3) df &lt;- read_delim(path, delim = ";",
+                                          show_col_types = FALSE)
+      df
+    }, error = function(e) NULL)
   }
 
-  document.getElementById("message").innerText = "Uploading... please wait."
+  classify_landmarks &lt;- function(df, label_col, x_col, y_col, z_col) {
+    df |&gt;
+      select(label = all_of(label_col), x = all_of(x_col),
+             y = all_of(y_col),         z = all_of(z_col)) |&gt;
+      mutate(
+        label = as.character(label),
+        label = if_else(is.na(label) | label == "",
+                        paste0("unlabeled_", row_number()), label),
+        x = as.numeric(x), y = as.numeric(y), z = as.numeric(z),
+        type = case_when(
+          str_detect(label, "^OC_")        ~ "semi",
+          str_detect(label, "^unlabeled_") ~ "semi",
+          TRUE                              ~ "fixed"
+        )
+      ) |&gt;
+      filter(!is.na(x), !is.na(y), !is.na(z))
+  }
 
-  const formData = new FormData()
-  formData.append("csv_file", file)
+  build_tps &lt;- function(lm_df, specimen_name) {
+    fmt &lt;- function(v) formatC(v, format = "f", digits = 4, width = 12,
+                                flag = " ")
+    coord_lines &lt;- paste(fmt(lm_df$x), fmt(lm_df$y), fmt(lm_df$z), sep = "  ")
+    c(paste0("LM3=", nrow(lm_df)), coord_lines, paste0("ID=", specimen_name))
+  }
 
-  try {
-    const response = await fetch(`${API}/analyze`, {
-      method: "POST",
-      body: formData
-    })
+  parse_tps_file &lt;- function(path) {
+    lines &lt;- readLines(path, warn = FALSE)
+    lines &lt;- lines[nzchar(trimws(lines))]
+    specimens &lt;- list(); spec_ids &lt;- character(); i &lt;- 1
 
-    const data = await response.json()
-
-    // Handle errors returned from parser
-    if (data.error) {
-      document.getElementById("message").innerText = "Error: " + data.error
-      return
+    while (i &lt;= length(lines)) {
+      line &lt;- trimws(lines[i])
+      if (grepl("^LM3?=", line, ignore.case = TRUE)) {
+        n_lm   &lt;- as.integer(sub("^LM3?=", "", line, ignore.case = TRUE))
+        coords &lt;- matrix(NA_real_, nrow = n_lm, ncol = 3)
+        for (j in seq_len(n_lm)) {
+          i &lt;- i + 1
+          vals &lt;- as.numeric(strsplit(trimws(lines[i]), "\\s+")[[1]])
+          coords[j, ] &lt;- vals[1:3]
+        }
+        spec_id &lt;- paste0("specimen_", length(specimens) + 1)
+        while (i &lt; length(lines)) {
+          i &lt;- i + 1; next_line &lt;- trimws(lines[i])
+          if (grepl("^ID=", next_line, ignore.case = TRUE)) {
+            spec_id &lt;- sub("^ID=", "", next_line, ignore.case = TRUE); break
+          }
+          if (grepl("^LM3?=", next_line, ignore.case = TRUE)) {
+            i &lt;- i - 1; break
+          }
+        }
+        specimens[[length(specimens) + 1]] &lt;- coords
+        spec_ids &lt;- c(spec_ids, spec_id)
+      } else { i &lt;- i + 1 }
     }
-
-    // Show confirmation message
-    document.getElementById("message").innerText = 
-      `Species: ${data.species}\nLandmarks detected: ${data.landmark_count}`
-
-    // Show results
-    document.getElementById("results").innerText = JSON.stringify(data, null, 2)
-
-  } catch (err) {
-    document.getElementById("message").innerText = 
-      "Could not reach the server. Please try again in a moment."
+    if (length(specimens) == 0) return(NULL)
+    p &lt;- nrow(specimens[[1]]); n &lt;- length(specimens)
+    A &lt;- array(NA_real_, dim = c(p, 3, n))
+    for (k in seq_len(n)) A[, , k] &lt;- specimens[[k]]
+    dimnames(A)[[3]] &lt;- spec_ids
+    list(A = A, ids = spec_ids, n_lm = p, n_spec = n)
   }
+
+  # ── section 1 &amp; 2 ───────────────────────────────────────────────────────────
+
+  raw_data &lt;- reactive({
+    req(input$csv_file)
+    read_csv_flexible(input$csv_file$datapath)
+  })
+
+  output$col_pickers &lt;- renderUI({
+    df &lt;- raw_data(); req(df); cols &lt;- names(df)
+    guess &lt;- function(p) {
+      m &lt;- cols[str_detect(tolower(cols), paste(tolower(p), collapse = "|"))]
+      if (length(m)) m[1] else cols[1]
+    }
+    tagList(
+      selectInput("col_label", "Label column", choices = cols,
+                  selected = guess(c("label","name","id","lm"))),
+      selectInput("col_x", "X / R coord", choices = cols,
+                  selected = guess(c("^r$","_x$","x$","r$"))),
+      selectInput("col_y", "Y / A coord", choices = cols,
+                  selected = guess(c("^a$","_y$","y$","a$"))),
+      selectInput("col_z", "Z / S coord", choices = cols,
+                  selected = guess(c("^s$","_z$","z$","s$")))
+    )
+  })
+
+  output$tbl_raw &lt;- DT::renderDT({
+    req(raw_data())
+    DT::datatable(raw_data(),
+                  options = list(scrollX = TRUE, pageLength = 10),
+                  rownames = FALSE)
+  })
+
+  output$tbl_raw_ready &lt;- reactive({ !is.null(raw_data()) })
+  outputOptions(output, "tbl_raw_ready", suspendWhenHidden = FALSE)
+
+  parsed &lt;- eventReactive(input$run_parse, {
+    req(raw_data(), input$col_label, input$col_x, input$col_y, input$col_z)
+    classify_landmarks(raw_data(), input$col_label,
+                       input$col_x, input$col_y, input$col_z)
+  })
+
+  output$tbl_parsed &lt;- DT::renderDT({
+    req(parsed())
+    DT::datatable(
+      parsed() |&gt; mutate(across(c(x, y, z), \(v) round(v, 4))),
+      options = list(scrollX = TRUE, pageLength = 15), rownames = FALSE
+    ) |&gt;
+      DT::formatStyle("type", backgroundColor = DT::styleEqual(
+        c("fixed", "semi"), c("#d4edda", "#cce5ff")))
+  })
+
+  output$lm_summary &lt;- renderPrint({
+    req(parsed()); df &lt;- parsed()
+    cat("Total landmarks:", nrow(df), "\n")
+    cat("Fixed landmarks:", sum(df$type == "fixed"), "\n")
+    cat("Semilandmarks  :", sum(df$type == "semi"),  "\n\n")
+    cat("Fixed landmark labels:\n")
+    cat(paste(" ", df$label[df$type == "fixed"], collapse = "\n"), "\n\n")
+    cat("Semilandmark labels:\n")
+    cat(paste(" ", df$label[df$type == "semi"],  collapse = "\n"), "\n")
+  })
+
+  tps_lines &lt;- reactive({
+    req(parsed())
+    build_tps(parsed(), input$specimen_name)
+  })
+
+  output$tps_preview &lt;- renderText({
+    req(tps_lines())
+    paste(tps_lines(), collapse = "\n")
+  })
+
+  output$dl_tps &lt;- downloadHandler(
+    filename = function() paste0(input$specimen_name, ".tps"),
+    content  = function(file) writeLines(tps_lines(), file)
+  )
+
+  # ── section 3: metadata ─────────────────────────────────────────────────────
+
+  meta_table &lt;- reactiveVal(tibble(
+    specimen = character(), habitat = character(), activity = character(),
+    locomotion = character(), notes = character(), saved_at = character()
+  ))
+
+  upsert_meta &lt;- function(tbl, specimen, habitat, activity, locomotion, notes) {
+    bind_rows(
+      tbl |&gt; filter(specimen != !!specimen),
+      tibble(specimen = specimen, habitat = habitat, activity = activity,
+             locomotion = locomotion, notes = notes,
+             saved_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
+    )
+  }
+
+  observeEvent(input$load_meta, {
+    req(input$specimen_name)
+    row &lt;- meta_table() |&gt; filter(specimen == input$specimen_name)
+    if (nrow(row) == 1) {
+      updateTextAreaInput(session, "meta_habitat",    value = row$habitat)
+      updateTextAreaInput(session, "meta_activity",   value = row$activity)
+      updateTextAreaInput(session, "meta_locomotion", value = row$locomotion)
+      updateTextAreaInput(session, "meta_notes",      value = row$notes)
+    } else {
+      showNotification(paste0("No saved metadata for '",
+                               input$specimen_name, "'."),
+                       type = "warning", duration = 4)
+    }
+  })
+
+  observeEvent(input$meta_upload, {
+    df &lt;- tryCatch(read_csv(input$meta_upload$datapath,
+                            show_col_types = FALSE), error = function(e) NULL)
+    if (!is.null(df)) {
+      meta_table(df)
+      showNotification("Metadata reloaded.", type = "message", duration = 3)
+    }
+  })
+
+  observeEvent(input$save_meta, {
+    req(input$specimen_name)
+    meta_table(upsert_meta(meta_table(), input$specimen_name,
+                           input$meta_habitat, input$meta_activity,
+                           input$meta_locomotion, input$meta_notes))
+    showNotification(
+      paste0("Saved '", input$specimen_name,
+             "'. Download CSV to keep between sessions."),
+      type = "message", duration = 4)
+  })
+
+  output$tbl_meta &lt;- DT::renderDT({
+    tbl &lt;- meta_table()
+    validate(need(nrow(tbl) &gt; 0, "No metadata saved yet."))
+    DT::datatable(tbl, options = list(scrollX = TRUE, pageLength = 10),
+                  rownames = FALSE)
+  })
+
+  output$dl_meta &lt;- downloadHandler(
+    filename = function() paste0("metadata_", Sys.Date(), ".csv"),
+    content  = function(file) write_csv(meta_table(), file)
+  )
+
+  # ── section 4: TPS analysis ─────────────────────────────────────────────────
+
+  tps_parsed &lt;- eventReactive(input$tps_file, {
+    req(input$tps_file)
+    result &lt;- tryCatch(parse_tps_file(input$tps_file$datapath),
+                       error = function(e) NULL)
+    validate(need(!is.null(result),
+      "Could not parse TPS file. Check format: LM3=n / coords / ID=name."))
+    result
+  })
+
+  output$tbl_tps_specimens &lt;- DT::renderDT({
+    req(tps_parsed()); tp &lt;- tps_parsed()
+    DT::datatable(
+      data.frame(Index = seq_along(tp$ids), Specimen = tp$ids,
+                 N_landmarks = tp$n_lm),
+      options = list(pageLength = 20), rownames = FALSE)
+  })
+
+  output$tbl_tps_ready &lt;- reactive({ !is.null(input$tps_file) })
+  outputOptions(output, "tbl_tps_ready", suspendWhenHidden = FALSE)
+
+  tps_results &lt;- eventReactive(input$run_tps_analysis, {
+    req(tps_parsed()); tp &lt;- tps_parsed()
+    validate(need(tp$n_spec &gt;= 2,
+      paste0("GPA requires at least 2 specimens. Your file has ", tp$n_spec,
+             ". Combine more student TPS files and re-upload.")))
+
+    gpa &lt;- tryCatch(
+      gpagen(tp$A, curves = NULL,
+             ProcD = (input$tps_procD == "full"), print.progress = FALSE),
+      error = function(e) validate(need(FALSE, paste("GPA failed:", e$message)))
+    )
+    pca &lt;- tryCatch(
+      gm.prcomp(gpa$coords),
+      error = function(e) validate(need(FALSE, paste("PCA failed:", e$message)))
+    )
+    list(gpa = gpa, pca = pca, ids = tp$ids)
+  })
+
+  output$tps_gpa_summary &lt;- renderPrint({
+    validate(need(input$run_tps_analysis &gt; 0,
+                  "Click 'Run GPA + PCA' to see results."))
+    req(tps_results()); res &lt;- tps_results()
+    cat("=== GPA (Generalized Procrustes Analysis) ===\n\n")
+    print(summary(res$gpa))
+    cat("\nConsensus shape (first 6 landmarks):\n")
+    print(round(head(res$gpa$consensus, 6), 4))
+  })
+
+  output$tbl_tps_pca &lt;- DT::renderDT({
+    validate(need(input$run_tps_analysis &gt; 0,
+                  "Click 'Run GPA + PCA' to see results."))
+    req(tps_results())
+    pca &lt;- tps_results()$pca
+    eigs &lt;- pca$sdev^2; var_exp &lt;- round(eigs / sum(eigs) * 100, 2)
+    n_pcs &lt;- min(input$tps_n_pcs, length(var_exp))
+    scores_df &lt;- as.data.frame(pca$x[, 1:n_pcs, drop = FALSE])
+    names(scores_df) &lt;- paste0("PC", 1:n_pcs, " (", var_exp[1:n_pcs], "%)")
+    scores_df$Specimen &lt;- rownames(scores_df)
+    scores_df &lt;- scores_df[, c("Specimen", setdiff(names(scores_df),"Specimen"))]
+    DT::datatable(scores_df, options = list(scrollX = TRUE), rownames = FALSE)
+  })
+
+  output$plot_tps_pca &lt;- plotly::renderPlotly({
+    validate(need(input$run_tps_analysis &gt; 0,
+                  "Click 'Run GPA + PCA' to see results."))
+    req(tps_results())
+    pca &lt;- tps_results()$pca
+    eigs &lt;- pca$sdev^2; var_exp &lt;- round(eigs / sum(eigs) * 100, 2)
+    scores &lt;- as.data.frame(pca$x); scores$Specimen &lt;- rownames(scores)
+    p &lt;- ggplot(scores, aes(x = Comp1, y = Comp2, label = Specimen)) +
+      geom_point(size = 3, colour = "#2c7bb6") +
+      geom_text(vjust = -0.8, size = 3) +
+      labs(x = paste0("PC1 (", var_exp[1], "% variance)"),
+           y = paste0("PC2 (", var_exp[2], "% variance)"),
+           title = "PCA morphospace — PC1 vs PC2") +
+      theme_minimal(base_size = 13)
+    plotly::ggplotly(p, tooltip = c("label", "x", "y"))
+  })
+
+  output$plot_tps_scree &lt;- plotly::renderPlotly({
+    validate(need(input$run_tps_analysis &gt; 0,
+                  "Click 'Run GPA + PCA' to see results."))
+    req(tps_results())
+    pca &lt;- tps_results()$pca
+    eigs &lt;- pca$sdev^2; var_exp &lt;- round(eigs / sum(eigs) * 100, 2)
+    n_show &lt;- min(input$tps_n_pcs, length(var_exp))
+    df_sc &lt;- data.frame(
+      PC       = factor(paste0("PC", 1:n_show), levels = paste0("PC", 1:n_show)),
+      Variance = var_exp[1:n_show]
+    )
+    p &lt;- ggplot(df_sc, aes(x = PC, y = Variance)) +
+      geom_col(fill = "#2c7bb6", alpha = 0.8) +
+      geom_line(aes(group = 1), colour = "#d7191c", linewidth = 0.8) +
+      geom_point(colour = "#d7191c", size = 2) +
+      labs(title = "Scree plot", y = "% Variance", x = "") +
+      theme_minimal(base_size = 13)
+    plotly::ggplotly(p)
+  })
+
+  output$plot_tps_consensus &lt;- renderPlot({
+    validate(need(input$run_tps_analysis &gt; 0,
+                  "Click 'Run GPA + PCA' to see results."))
+    req(tps_results())
+    cons &lt;- tps_results()$gpa$consensus
+    df_plot &lt;- data.frame(x = cons[,1], y = cons[,2], z = cons[,3],
+                          label = rownames(cons))
+    par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
+    plot(df_plot$x, df_plot$y, pch = 19, col = "#2c7bb6", cex = 1.2,
+         xlab = "X (R)", ylab = "Y (A)", main = "Consensus — R-A view")
+    text(df_plot$x, df_plot$y, labels = df_plot$label, cex = 0.6, pos = 3)
+    plot(df_plot$x, df_plot$z, pch = 19, col = "#2c7bb6", cex = 1.2,
+         xlab = "X (R)", ylab = "Z (S)", main = "Consensus — R-S view")
+    text(df_plot$x, df_plot$z, labels = df_plot$label, cex = 0.6, pos = 3)
+  })
+
+  # Spinner JS
+  session$onFlushed(function() {
+    shinyjs::runjs("
+      $(document).on('click', '#run_tps_analysis', function() {
+        $('#gpa-running').css('display', 'flex');
+      });
+      $(document).on('shiny:idle', function() {
+        $('#gpa-running').css('display', 'none');
+      });
+    ")
+  })
 }
-</script>
+
+shinyApp(ui, server)</code></pre>
 
 
-</section>
 
 </main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">

@@ -5,8 +5,6 @@ format:
     page-layout: full
     toc: true
     toc-depth: 3
-    code-fold: true
-    code-tools: true
     theme: sandstone
     include-in-header:
       text: |
@@ -17,12 +15,7 @@ format:
           flex-wrap: wrap;
           border-bottom: 2px solid #c8a96e;
         }
-
-        .nav-tabs .nav-item {
-          margin-bottom: -2px;
-        }
-
-        /* Default (inactive) tab */
+        .nav-tabs .nav-item { margin-bottom: -2px; }
         .nav-tabs .nav-link {
           background-color: #f5f0e8;
           color: #5a4a2f;
@@ -35,14 +28,11 @@ format:
           transition: background-color 0.15s, color 0.15s;
           white-space: nowrap;
         }
-
         .nav-tabs .nav-link:hover {
           background-color: #e8dfc8;
           color: #3b2f1a;
           border-color: #c8a96e;
         }
-
-        /* Active (selected) tab */
         .nav-tabs .nav-link.active {
           background-color: #8c6d3f;
           color: #ffffff;
@@ -50,8 +40,6 @@ format:
           border-bottom-color: #8c6d3f;
           font-weight: 600;
         }
-
-        /* Tab content panel */
         .tab-content {
           border: 1px solid #d4c5a0;
           border-top: none;
@@ -59,8 +47,6 @@ format:
           padding: 16px;
           background: #ffffff;
         }
-
-        /* ── GPA run spinner ─────────────────────────────────────────── */
         #gpa-running {
           display: none;
           align-items: center;
@@ -73,7 +59,6 @@ format:
           font-size: 0.85rem;
           color: #5a4a2f;
         }
-
         .gpa-spinner {
           width: 20px;
           height: 20px;
@@ -83,675 +68,518 @@ format:
           animation: spin 0.8s linear infinite;
           flex-shrink: 0;
         }
-
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
+        @keyframes spin { to { transform: rotate(360deg); } }
         </style>
-        <script>
-        $(document).on('click', '#run_tps_analysis', function() {
-          $('#gpa-running').css('display', 'flex');
-        });
-        $(document).on('shiny:idle', function() {
-          $('#gpa-running').css('display', 'none');
-        });
-        </script>
-server: shiny
+filters:
+  - shinylive
+engine: knitr
 ---
 
-```{r setup, include=FALSE}
-required_pkgs <- c("geomorph", "shiny", "DT", "ggplot2", "plotly", "readr", "dplyr", "stringr")
-new_pkgs <- required_pkgs[!sapply(required_pkgs, requireNamespace, quietly = TRUE)]
-if (length(new_pkgs) > 0) install.packages(new_pkgs, repos = "https://cloud.r-project.org")
+> **First load:** This page runs R in your browser via WebAssembly.
+> Allow 30–60 seconds on first visit for packages to load.
 
-library(geomorph)
+```{shinylive-r}
+#| standalone: true
+#| viewerHeight: 900
+
 library(shiny)
-library(DT)
-library(ggplot2)
-library(plotly)
-library(readr)
-library(dplyr)
-library(stringr)
+library(bslib)
 
-source("geomorph_helpers.R")
+# ── UI ────────────────────────────────────────────────────────────────────────
+ui <- page_navbar(
+  title = "BIOSC1203 Geomorphometric Analysis",
+  theme = bs_theme(bootswatch = "sandstone"),
 
-# Path where student metadata is saved between sessions.
-# The file lives next to about.qmd on the server.
-METADATA_FILE <- "student_metadata.csv"
-```
-
-## Overview
-
-This tool has five sections:
-
-1. **Upload & Preview** — load your 3D Slicer CSV, classify landmarks, preview
-2. **Download TPS** — convert to TPS format and download
-3. **Ecological Metadata** — record habitat, activity period, and locomotion for your specimen; saved so you can reload it later
-4. **TPS Analysis** — upload one or more TPS files for multi-specimen GPA + PCA
-5. **Geomorph Analyses** — results from the TPS analysis
-
----
-
-## 1 · Upload & Preview
-
-```{r ui-upload}
-#| panel: sidebar
-
-fileInput("csv_file", "Upload CSV file",
-  accept = c(".csv", "text/csv"),
-  buttonLabel = "Browse...",
-  placeholder = "No file selected"
-)
-hr()
-
-textInput("specimen_name", "Specimen name", value = "Genus_species",
-  placeholder = "e.g. Homo_sapiens")
-helpText("Use Genus_species format. This becomes the ID= field in the TPS file
-          and the key used to save/load your metadata.")
-
-hr()
-
-h5("Column mapping")
-helpText("Match your CSV column names to the fields below.")
-uiOutput("col_pickers")
-
-hr()
-
-actionButton("run_parse", "Parse landmarks", class = "btn-primary", width = "100%")
-```
-
-```{r ui-preview}
-#| panel: fill
-
-# Raw data tab always visible once CSV is uploaded
-conditionalPanel(
-  condition = "output.tbl_raw_ready",
-  tabsetPanel(
-    tabPanel("Raw data",                DTOutput("tbl_raw")),
-    tabPanel("Parsed landmarks",        DTOutput("tbl_parsed")),
-    tabPanel("Landmark classification", verbatimTextOutput("lm_summary"))
-  )
-)
-```
-
----
-
-## 2 · Download TPS
-
-```{r ui-tps}
-#| panel: sidebar
-
-helpText("Once landmarks are parsed, generate the TPS file.")
-hr()
-downloadButton("dl_tps", "Download TPS file", class = "btn-success")
-```
-
-```{r ui-tps-preview}
-#| panel: fill
-
-h5("TPS file preview")
-verbatimTextOutput("tps_preview")
-```
-
----
-
-## 3 · Ecological Metadata
-
-```{r ui-meta}
-#| panel: sidebar
-
-h5("Load saved metadata")
-helpText("Enter your specimen name above (Section 1), then click Load to
-          pull back anything you saved in a previous session.")
-actionButton("load_meta", "Load saved metadata", width = "100%")
-
-hr()
-
-h5("Enter metadata for this specimen")
-
-textAreaInput("meta_habitat",
-  label    = "Habitat",
-  rows     = 3,
-  placeholder = "Describe where this species lives — e.g. tropical rainforest
-understory, rocky arid scrubland, open savanna, freshwater riparian..."
-)
-
-textAreaInput("meta_activity",
-  label    = "Activity period",
-  rows     = 2,
-  placeholder = "When is this species active? — e.g. diurnal, nocturnal,
-crepuscular, cathemeral..."
-)
-
-textAreaInput("meta_locomotion",
-  label    = "Locomotion / movement through environment",
-  rows     = 3,
-  placeholder = "How does this species move? — e.g. arboreal climbing,
-suspensory, terrestrial quadruped, gliding, swimming, saltatorial..."
-)
-
-textAreaInput("meta_notes",
-  label    = "Additional notes",
-  rows     = 3,
-  placeholder = "Anything else relevant — diet, body size, phylogenetic
-notes, observer name..."
-)
-
-hr()
-
-actionButton("save_meta", "Save metadata", class = "btn-success", width = "100%")
-uiOutput("meta_save_status")
-```
-
-```{r ui-meta-out}
-#| panel: fill
-
-h5("Saved metadata for all specimens")
-helpText("All entries saved in this project session are shown below.
-          The table is written to student_metadata.csv next to about.qmd
-          so it persists across Quarto preview restarts.")
-DTOutput("tbl_meta")
-hr()
-downloadButton("dl_meta", "Download metadata CSV", class = "btn-outline-secondary")
-```
-
----
-
-## 4 · TPS File Upload & Analysis
-
-```{r ui-tps-upload}
-#| panel: sidebar
-
-h5("Upload TPS file(s)")
-helpText("Upload a single TPS file that contains one or more specimens
-          (each block: LM3=n / coordinates / ID=name).
-          You can combine multiple student TPS files into one before uploading.")
-
-fileInput("tps_file", "Upload TPS file",
-  accept      = c(".tps", "text/plain"),
-  buttonLabel = "Browse...",
-  placeholder = "No file selected"
-)
-
-hr()
-
-h5("GPA settings")
-checkboxInput("tps_has_sliders", "Include semilandmarks as sliders?", value = TRUE)
-selectInput("tps_procD", "Procrustes distance method",
-  choices  = c("full" = "full", "orthogonal" = "orthogonal"),
-  selected = "full"
-)
-
-hr()
-
-h5("PCA settings")
-numericInput("tps_n_pcs", "Number of PCs to display", value = 3, min = 2, max = 10)
-
-hr()
-
-actionButton("run_tps_analysis", "Run GPA + PCA", class = "btn-primary", width = "100%")
-
-# Spinner shown while analysis runs, hidden when Shiny goes idle
-HTML('<div id="gpa-running"><div class="gpa-spinner"></div>Running GPA + PCA — this may take a moment...</div>')
-```
-
-```{r ui-tps-analysis-out}
-#| panel: fill
-
-# Specimens in TPS always shown once file is uploaded
-conditionalPanel(
-  condition = "output.tbl_tps_ready",
-  tabsetPanel(
-    tabPanel("Specimens in TPS",   DTOutput("tbl_tps_specimens")),
-    tabPanel("GPA summary",        verbatimTextOutput("tps_gpa_summary")),
-    tabPanel("PCA scores",         DTOutput("tbl_tps_pca")),
-    tabPanel("PCA plot",           plotlyOutput("plot_tps_pca",    height = "500px")),
-    tabPanel("Variance explained", plotlyOutput("plot_tps_scree",  height = "400px")),
-    tabPanel("Consensus shape",    plotOutput("plot_tps_consensus", height = "500px"))
-  )
-)
-```
-
----
-
-```{r server}
-#| context: server
-
-# ── helper functions ──────────────────────────────────────────────────────────
-
-read_csv_flexible <- function(path) {
-  tryCatch({
-    df <- read_csv(path, show_col_types = FALSE)
-    if (ncol(df) < 3) df <- read_delim(path, delim = ";", show_col_types = FALSE)
-    df
-  }, error = function(e) NULL)
-}
-
-classify_landmarks <- function(df, label_col, x_col, y_col, z_col) {
-  df |>
-    select(label = all_of(label_col),
-           x     = all_of(x_col),
-           y     = all_of(y_col),
-           z     = all_of(z_col)) |>
-    mutate(
-      label = as.character(label),
-      label = if_else(is.na(label) | label == "",
-                      paste0("unlabeled_", row_number()), label),
-      x = as.numeric(x),
-      y = as.numeric(y),
-      z = as.numeric(z),
-      type = case_when(
-        str_detect(label, "^OC_")        ~ "semi",
-        str_detect(label, "^unlabeled_") ~ "semi",
-        TRUE                              ~ "fixed"
-      )
-    ) |>
-    filter(!is.na(x), !is.na(y), !is.na(z))
-}
-
-# TPS format:  LM3=n / x  y  z (tab-delimited, width-padded) / ID=name
-build_tps <- function(lm_df, specimen_name) {
-  n   <- nrow(lm_df)
-  fmt <- function(v) formatC(v, format = "f", digits = 4, width = 12, flag = " ")
-  coord_lines <- paste(fmt(lm_df$x), fmt(lm_df$y), fmt(lm_df$z), sep = "  ")
-  c(paste0("LM3=", n), coord_lines, paste0("ID=", specimen_name))
-}
-
-# ── metadata helpers ──────────────────────────────────────────────────────────
-
-# Load the metadata table from disk (or return empty tibble if not yet created)
-load_metadata_table <- function() {
-  if (file.exists(METADATA_FILE)) {
-    tryCatch(
-      read_csv(METADATA_FILE, show_col_types = FALSE),
-      error = function(e) tibble(
-        specimen = character(), habitat = character(),
-        activity = character(), locomotion = character(), notes = character(),
-        saved_at = character()
+  # ── Section 1: CSV Upload & Preview ────────────────────────────────────────
+  nav_panel("1 · Upload & Preview",
+    layout_sidebar(
+      sidebar = sidebar(
+        fileInput("csv_file", "Upload CSV file",
+          accept = c(".csv", "text/csv"),
+          buttonLabel = "Browse...",
+          placeholder = "No file selected"),
+        hr(),
+        textInput("specimen_name", "Specimen name", value = "Genus_species",
+          placeholder = "e.g. Homo_sapiens"),
+        helpText("Use Genus_species format. Becomes the ID= field in TPS
+                  and the key for saving metadata."),
+        hr(),
+        h5("Column mapping"),
+        helpText("Match your CSV columns to the fields below."),
+        uiOutput("col_pickers"),
+        hr(),
+        actionButton("run_parse", "Parse landmarks",
+                     class = "btn-primary", width = "100%")
+      ),
+      conditionalPanel(
+        condition = "output.tbl_raw_ready",
+        tabsetPanel(
+          tabPanel("Raw data",                DT::DTOutput("tbl_raw")),
+          tabPanel("Parsed landmarks",        DT::DTOutput("tbl_parsed")),
+          tabPanel("Landmark classification", verbatimTextOutput("lm_summary"))
+        )
       )
     )
-  } else {
-    tibble(
-      specimen   = character(),
-      habitat    = character(),
-      activity   = character(),
-      locomotion = character(),
-      notes      = character(),
-      saved_at   = character()
+  ),
+
+  # ── Section 2: Download TPS ─────────────────────────────────────────────────
+  nav_panel("2 · Download TPS",
+    layout_sidebar(
+      sidebar = sidebar(
+        helpText("Once landmarks are parsed, generate the TPS file."),
+        hr(),
+        downloadButton("dl_tps", "Download TPS file", class = "btn-success")
+      ),
+      h5("TPS file preview"),
+      verbatimTextOutput("tps_preview")
     )
-  }
-}
+  ),
 
-# Upsert one row (replace existing entry for this specimen, or append)
-upsert_metadata <- function(tbl, specimen, habitat, activity, locomotion, notes) {
-  new_row <- tibble(
-    specimen   = specimen,
-    habitat    = habitat,
-    activity   = activity,
-    locomotion = locomotion,
-    notes      = notes,
-    saved_at   = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+  # ── Section 3: Ecological Metadata ──────────────────────────────────────────
+  nav_panel("3 · Ecological Metadata",
+    layout_sidebar(
+      sidebar = sidebar(
+        h5("Load saved metadata"),
+        helpText("Enter your specimen name in Section 1, then click Load."),
+        actionButton("load_meta", "Load from specimen name", width = "100%"),
+        hr(),
+        fileInput("meta_upload", "Or reload a saved metadata CSV",
+          accept = c(".csv"), buttonLabel = "Browse..."),
+        hr(),
+        h5("Enter metadata for this specimen"),
+        textAreaInput("meta_habitat", "Habitat", rows = 3,
+          placeholder = "e.g. tropical rainforest understory, rocky arid scrubland..."),
+        textAreaInput("meta_activity", "Activity period", rows = 2,
+          placeholder = "e.g. diurnal, nocturnal, crepuscular, cathemeral..."),
+        textAreaInput("meta_locomotion", "Locomotion", rows = 3,
+          placeholder = "e.g. arboreal climbing, gliding, swimming, saltatorial..."),
+        textAreaInput("meta_notes", "Additional notes", rows = 3,
+          placeholder = "Diet, body size, observer name..."),
+        hr(),
+        actionButton("save_meta", "Save metadata",
+                     class = "btn-success", width = "100%")
+      ),
+      h5("Saved metadata for all specimens"),
+      helpText("Download this CSV to save your work. Re-upload it next session to reload."),
+      DT::DTOutput("tbl_meta"),
+      hr(),
+      downloadButton("dl_meta", "Download metadata CSV",
+                     class = "btn-outline-secondary")
+    )
+  ),
+
+  # ── Section 4: TPS Analysis ──────────────────────────────────────────────────
+  nav_panel("4 · TPS Analysis",
+    layout_sidebar(
+      sidebar = sidebar(
+        h5("Upload TPS file"),
+        helpText("Upload a TPS file with one or more specimens
+                  (LM3=n / coordinates / ID=name).
+                  Combine multiple student files into one before uploading."),
+        fileInput("tps_file", "Upload TPS file",
+          accept = c(".tps", "text/plain"),
+          buttonLabel = "Browse...",
+          placeholder = "No file selected"),
+        hr(),
+        h5("GPA settings"),
+        checkboxInput("tps_has_sliders",
+                      "Include semilandmarks as sliders?", value = TRUE),
+        selectInput("tps_procD", "Procrustes distance method",
+          choices = c("full" = "full", "orthogonal" = "orthogonal"),
+          selected = "full"),
+        hr(),
+        h5("PCA settings"),
+        numericInput("tps_n_pcs", "Number of PCs to display",
+                     value = 3, min = 2, max = 10),
+        hr(),
+        actionButton("run_tps_analysis", "Run GPA + PCA",
+                     class = "btn-primary", width = "100%"),
+        tags$div(id = "gpa-running",
+          tags$div(class = "gpa-spinner"),
+          "Running GPA + PCA — this may take a moment..."
+        )
+      ),
+      conditionalPanel(
+        condition = "output.tbl_tps_ready",
+        tabsetPanel(
+          tabPanel("Specimens in TPS",   DT::DTOutput("tbl_tps_specimens")),
+          tabPanel("GPA summary",        verbatimTextOutput("tps_gpa_summary")),
+          tabPanel("PCA scores",         DT::DTOutput("tbl_tps_pca")),
+          tabPanel("PCA plot",           plotly::plotlyOutput("plot_tps_pca",
+                                                              height = "500px")),
+          tabPanel("Variance explained", plotly::plotlyOutput("plot_tps_scree",
+                                                              height = "400px")),
+          tabPanel("Consensus shape",    plotOutput("plot_tps_consensus",
+                                                    height = "500px"))
+        )
+      )
+    )
   )
-  tbl <- tbl |> filter(specimen != !!specimen)
-  bind_rows(tbl, new_row)
-}
-
-# ── section 1 & 2: CSV upload / parse / TPS ───────────────────────────────────
-
-raw_data <- reactive({
-  req(input$csv_file)
-  read_csv_flexible(input$csv_file$datapath)
-})
-
-output$col_pickers <- renderUI({
-  df <- raw_data()
-  req(df)
-  cols <- names(df)
-  guess <- function(patterns) {
-    m <- cols[str_detect(tolower(cols), paste(tolower(patterns), collapse = "|"))]
-    if (length(m)) m[1] else cols[1]
-  }
-  tagList(
-    selectInput("col_label", "Label column", choices = cols,
-                selected = guess(c("label","name","id","lm"))),
-    selectInput("col_x",     "X / R coord",  choices = cols,
-                selected = guess(c("^r$","_x$","x$","r$"))),
-    selectInput("col_y",     "Y / A coord",  choices = cols,
-                selected = guess(c("^a$","_y$","y$","a$"))),
-    selectInput("col_z",     "Z / S coord",  choices = cols,
-                selected = guess(c("^s$","_z$","z$","s$")))
-  )
-})
-
-output$tbl_raw <- renderDT({
-  req(raw_data())
-  datatable(raw_data(), options = list(scrollX = TRUE, pageLength = 10),
-            rownames = FALSE)
-})
-
-# Flag used by conditionalPanel to show tabs only after CSV is uploaded
-output$tbl_raw_ready <- reactive({ !is.null(raw_data()) })
-outputOptions(output, "tbl_raw_ready", suspendWhenHidden = FALSE)
-
-parsed <- eventReactive(input$run_parse, {
-  req(raw_data(), input$col_label, input$col_x, input$col_y, input$col_z)
-  classify_landmarks(raw_data(), input$col_label,
-                     input$col_x, input$col_y, input$col_z)
-})
-
-output$tbl_parsed <- renderDT({
-  req(parsed())
-  df <- parsed() |> mutate(across(c(x, y, z), \(v) round(v, 4)))
-  datatable(df, options = list(scrollX = TRUE, pageLength = 15),
-            rownames = FALSE) |>
-    formatStyle("type",
-      backgroundColor = styleEqual(
-        c("fixed", "semi"), c("#d4edda", "#cce5ff")))
-})
-
-output$lm_summary <- renderPrint({
-  req(parsed())
-  df <- parsed()
-  cat("Total landmarks:", nrow(df), "\n")
-  cat("Fixed landmarks:", sum(df$type == "fixed"), "\n")
-  cat("Semilandmarks  :", sum(df$type == "semi"),  "\n\n")
-  cat("Fixed landmark labels:\n")
-  cat(paste(" ", df$label[df$type == "fixed"], collapse = "\n"), "\n\n")
-  cat("Semilandmark labels:\n")
-  cat(paste(" ", df$label[df$type == "semi"],  collapse = "\n"), "\n")
-})
-
-tps_lines <- reactive({
-  req(parsed())
-  build_tps(parsed(), input$specimen_name)
-})
-
-output$tps_preview <- renderText({
-  req(tps_lines())
-  paste(tps_lines(), collapse = "\n")
-})
-
-output$dl_tps <- downloadHandler(
-  filename = function() paste0(input$specimen_name, ".tps"),
-  content  = function(file) writeLines(tps_lines(), file)
 )
 
-# ── section 3: ecological metadata ───────────────────────────────────────────
+# ── Server ────────────────────────────────────────────────────────────────────
+server <- function(input, output, session) {
 
-# Reactive value holding the in-memory metadata table (synced to disk on save)
-meta_table <- reactiveVal(load_metadata_table())
+  # Install packages in WebR on first run
+  if (!requireNamespace("geomorph",  quietly = TRUE)) webr::install("geomorph")
+  if (!requireNamespace("DT",        quietly = TRUE)) webr::install("DT")
+  if (!requireNamespace("ggplot2",   quietly = TRUE)) webr::install("ggplot2")
+  if (!requireNamespace("plotly",    quietly = TRUE)) webr::install("plotly")
+  if (!requireNamespace("readr",     quietly = TRUE)) webr::install("readr")
+  if (!requireNamespace("dplyr",     quietly = TRUE)) webr::install("dplyr")
+  if (!requireNamespace("stringr",   quietly = TRUE)) webr::install("stringr")
+  if (!requireNamespace("bslib",     quietly = TRUE)) webr::install("bslib")
 
-# Load button: pull the saved row for this specimen into the text boxes
-observeEvent(input$load_meta, {
-  req(input$specimen_name)
-  tbl <- meta_table()
-  row <- tbl |> filter(specimen == input$specimen_name)
-  if (nrow(row) == 1) {
-    updateTextAreaInput(session, "meta_habitat",    value = row$habitat)
-    updateTextAreaInput(session, "meta_activity",   value = row$activity)
-    updateTextAreaInput(session, "meta_locomotion", value = row$locomotion)
-    updateTextAreaInput(session, "meta_notes",      value = row$notes)
-  } else {
-    showNotification(
-      paste0("No saved metadata found for '", input$specimen_name, "'."),
-      type = "warning", duration = 4
-    )
+  library(geomorph)
+  library(DT)
+  library(ggplot2)
+  library(plotly)
+  library(readr)
+  library(dplyr)
+  library(stringr)
+
+  # ── helpers ─────────────────────────────────────────────────────────────────
+
+  read_csv_flexible <- function(path) {
+    tryCatch({
+      df <- read_csv(path, show_col_types = FALSE)
+      if (ncol(df) < 3) df <- read_delim(path, delim = ";",
+                                          show_col_types = FALSE)
+      df
+    }, error = function(e) NULL)
   }
-})
 
-# Save button: upsert into the table and write to disk
-observeEvent(input$save_meta, {
-  req(input$specimen_name)
-  updated <- upsert_metadata(
-    tbl        = meta_table(),
-    specimen   = input$specimen_name,
-    habitat    = input$meta_habitat,
-    activity   = input$meta_activity,
-    locomotion = input$meta_locomotion,
-    notes      = input$meta_notes
-  )
-  meta_table(updated)
-  tryCatch({
-    write_csv(updated, METADATA_FILE)
-    showNotification(
-      paste0("Metadata saved for '", input$specimen_name, "'."),
-      type = "message", duration = 3
-    )
-  }, error = function(e) {
-    showNotification(
-      paste0("Could not write to disk: ", e$message,
-             ". Metadata is saved for this session only."),
-      type = "warning", duration = 6
+  classify_landmarks <- function(df, label_col, x_col, y_col, z_col) {
+    df |>
+      select(label = all_of(label_col), x = all_of(x_col),
+             y = all_of(y_col),         z = all_of(z_col)) |>
+      mutate(
+        label = as.character(label),
+        label = if_else(is.na(label) | label == "",
+                        paste0("unlabeled_", row_number()), label),
+        x = as.numeric(x), y = as.numeric(y), z = as.numeric(z),
+        type = case_when(
+          str_detect(label, "^OC_")        ~ "semi",
+          str_detect(label, "^unlabeled_") ~ "semi",
+          TRUE                              ~ "fixed"
+        )
+      ) |>
+      filter(!is.na(x), !is.na(y), !is.na(z))
+  }
+
+  build_tps <- function(lm_df, specimen_name) {
+    fmt <- function(v) formatC(v, format = "f", digits = 4, width = 12,
+                                flag = " ")
+    coord_lines <- paste(fmt(lm_df$x), fmt(lm_df$y), fmt(lm_df$z), sep = "  ")
+    c(paste0("LM3=", nrow(lm_df)), coord_lines, paste0("ID=", specimen_name))
+  }
+
+  parse_tps_file <- function(path) {
+    lines <- readLines(path, warn = FALSE)
+    lines <- lines[nzchar(trimws(lines))]
+    specimens <- list(); spec_ids <- character(); i <- 1
+
+    while (i <= length(lines)) {
+      line <- trimws(lines[i])
+      if (grepl("^LM3?=", line, ignore.case = TRUE)) {
+        n_lm   <- as.integer(sub("^LM3?=", "", line, ignore.case = TRUE))
+        coords <- matrix(NA_real_, nrow = n_lm, ncol = 3)
+        for (j in seq_len(n_lm)) {
+          i <- i + 1
+          vals <- as.numeric(strsplit(trimws(lines[i]), "\\s+")[[1]])
+          coords[j, ] <- vals[1:3]
+        }
+        spec_id <- paste0("specimen_", length(specimens) + 1)
+        while (i < length(lines)) {
+          i <- i + 1; next_line <- trimws(lines[i])
+          if (grepl("^ID=", next_line, ignore.case = TRUE)) {
+            spec_id <- sub("^ID=", "", next_line, ignore.case = TRUE); break
+          }
+          if (grepl("^LM3?=", next_line, ignore.case = TRUE)) {
+            i <- i - 1; break
+          }
+        }
+        specimens[[length(specimens) + 1]] <- coords
+        spec_ids <- c(spec_ids, spec_id)
+      } else { i <- i + 1 }
+    }
+    if (length(specimens) == 0) return(NULL)
+    p <- nrow(specimens[[1]]); n <- length(specimens)
+    A <- array(NA_real_, dim = c(p, 3, n))
+    for (k in seq_len(n)) A[, , k] <- specimens[[k]]
+    dimnames(A)[[3]] <- spec_ids
+    list(A = A, ids = spec_ids, n_lm = p, n_spec = n)
+  }
+
+  # ── section 1 & 2 ───────────────────────────────────────────────────────────
+
+  raw_data <- reactive({
+    req(input$csv_file)
+    read_csv_flexible(input$csv_file$datapath)
+  })
+
+  output$col_pickers <- renderUI({
+    df <- raw_data(); req(df); cols <- names(df)
+    guess <- function(p) {
+      m <- cols[str_detect(tolower(cols), paste(tolower(p), collapse = "|"))]
+      if (length(m)) m[1] else cols[1]
+    }
+    tagList(
+      selectInput("col_label", "Label column", choices = cols,
+                  selected = guess(c("label","name","id","lm"))),
+      selectInput("col_x", "X / R coord", choices = cols,
+                  selected = guess(c("^r$","_x$","x$","r$"))),
+      selectInput("col_y", "Y / A coord", choices = cols,
+                  selected = guess(c("^a$","_y$","y$","a$"))),
+      selectInput("col_z", "Z / S coord", choices = cols,
+                  selected = guess(c("^s$","_z$","z$","s$")))
     )
   })
-})
 
-output$tbl_meta <- renderDT({
-  tbl <- meta_table()
-  validate(need(nrow(tbl) > 0, "No metadata saved yet."))
-  datatable(tbl, options = list(scrollX = TRUE, pageLength = 10),
-            rownames = FALSE)
-})
+  output$tbl_raw <- DT::renderDT({
+    req(raw_data())
+    DT::datatable(raw_data(),
+                  options = list(scrollX = TRUE, pageLength = 10),
+                  rownames = FALSE)
+  })
 
-output$dl_meta <- downloadHandler(
-  filename = function() paste0("metadata_", Sys.Date(), ".csv"),
-  content  = function(file) write_csv(meta_table(), file)
-)
+  output$tbl_raw_ready <- reactive({ !is.null(raw_data()) })
+  outputOptions(output, "tbl_raw_ready", suspendWhenHidden = FALSE)
 
-# ── section 4 & 5: TPS upload → GPA + PCA ────────────────────────────────────
+  parsed <- eventReactive(input$run_parse, {
+    req(raw_data(), input$col_label, input$col_x, input$col_y, input$col_z)
+    classify_landmarks(raw_data(), input$col_label,
+                       input$col_x, input$col_y, input$col_z)
+  })
 
-# Parse an uploaded TPS file into a named list of coordinate matrices
-# Returns list(coords_array = p×3×n array, specimen_ids = character vector,
-#              lm_types = character vector of length p)
-parse_tps_file <- function(path) {
-  lines <- readLines(path, warn = FALSE)
-  lines <- lines[nzchar(trimws(lines))]  # drop blank lines
+  output$tbl_parsed <- DT::renderDT({
+    req(parsed())
+    DT::datatable(
+      parsed() |> mutate(across(c(x, y, z), \(v) round(v, 4))),
+      options = list(scrollX = TRUE, pageLength = 15), rownames = FALSE
+    ) |>
+      DT::formatStyle("type", backgroundColor = DT::styleEqual(
+        c("fixed", "semi"), c("#d4edda", "#cce5ff")))
+  })
 
-  specimens  <- list()
-  spec_ids   <- character()
-  i          <- 1
+  output$lm_summary <- renderPrint({
+    req(parsed()); df <- parsed()
+    cat("Total landmarks:", nrow(df), "\n")
+    cat("Fixed landmarks:", sum(df$type == "fixed"), "\n")
+    cat("Semilandmarks  :", sum(df$type == "semi"),  "\n\n")
+    cat("Fixed landmark labels:\n")
+    cat(paste(" ", df$label[df$type == "fixed"], collapse = "\n"), "\n\n")
+    cat("Semilandmark labels:\n")
+    cat(paste(" ", df$label[df$type == "semi"],  collapse = "\n"), "\n")
+  })
 
-  while (i <= length(lines)) {
-    line <- trimws(lines[i])
+  tps_lines <- reactive({
+    req(parsed())
+    build_tps(parsed(), input$specimen_name)
+  })
 
-    if (grepl("^LM3?=", line, ignore.case = TRUE)) {
-      n_lm <- as.integer(sub("^LM3?=", "", line, ignore.case = TRUE))
-      coords <- matrix(NA_real_, nrow = n_lm, ncol = 3)
+  output$tps_preview <- renderText({
+    req(tps_lines())
+    paste(tps_lines(), collapse = "\n")
+  })
 
-      for (j in seq_len(n_lm)) {
-        i <- i + 1
-        vals <- as.numeric(strsplit(trimws(lines[i]), "\\s+")[[1]])
-        coords[j, ] <- vals[1:3]
-      }
+  output$dl_tps <- downloadHandler(
+    filename = function() paste0(input$specimen_name, ".tps"),
+    content  = function(file) writeLines(tps_lines(), file)
+  )
 
-      # Scan ahead for ID= line (skip any SCALE= lines)
-      spec_id <- paste0("specimen_", length(specimens) + 1)
-      while (i < length(lines)) {
-        i <- i + 1
-        next_line <- trimws(lines[i])
-        if (grepl("^ID=", next_line, ignore.case = TRUE)) {
-          spec_id <- sub("^ID=", "", next_line, ignore.case = TRUE)
-          break
-        }
-        if (grepl("^LM3?=", next_line, ignore.case = TRUE)) {
-          i <- i - 1   # back up — next iteration will catch this LM= line
-          break
-        }
-      }
+  # ── section 3: metadata ─────────────────────────────────────────────────────
 
-      specimens[[length(specimens) + 1]] <- coords
-      spec_ids <- c(spec_ids, spec_id)
+  meta_table <- reactiveVal(tibble(
+    specimen = character(), habitat = character(), activity = character(),
+    locomotion = character(), notes = character(), saved_at = character()
+  ))
 
-    } else {
-      i <- i + 1
-    }
+  upsert_meta <- function(tbl, specimen, habitat, activity, locomotion, notes) {
+    bind_rows(
+      tbl |> filter(specimen != !!specimen),
+      tibble(specimen = specimen, habitat = habitat, activity = activity,
+             locomotion = locomotion, notes = notes,
+             saved_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
+    )
   }
 
-  if (length(specimens) == 0) return(NULL)
+  observeEvent(input$load_meta, {
+    req(input$specimen_name)
+    row <- meta_table() |> filter(specimen == input$specimen_name)
+    if (nrow(row) == 1) {
+      updateTextAreaInput(session, "meta_habitat",    value = row$habitat)
+      updateTextAreaInput(session, "meta_activity",   value = row$activity)
+      updateTextAreaInput(session, "meta_locomotion", value = row$locomotion)
+      updateTextAreaInput(session, "meta_notes",      value = row$notes)
+    } else {
+      showNotification(paste0("No saved metadata for '",
+                               input$specimen_name, "'."),
+                       type = "warning", duration = 4)
+    }
+  })
 
-  p <- nrow(specimens[[1]])
-  n <- length(specimens)
+  observeEvent(input$meta_upload, {
+    df <- tryCatch(read_csv(input$meta_upload$datapath,
+                            show_col_types = FALSE), error = function(e) NULL)
+    if (!is.null(df)) {
+      meta_table(df)
+      showNotification("Metadata reloaded.", type = "message", duration = 3)
+    }
+  })
 
-  # Build p × 3 × n array
-  A <- array(NA_real_, dim = c(p, 3, n))
-  for (k in seq_len(n)) A[, , k] <- specimens[[k]]
-  dimnames(A)[[3]] <- spec_ids
+  observeEvent(input$save_meta, {
+    req(input$specimen_name)
+    meta_table(upsert_meta(meta_table(), input$specimen_name,
+                           input$meta_habitat, input$meta_activity,
+                           input$meta_locomotion, input$meta_notes))
+    showNotification(
+      paste0("Saved '", input$specimen_name,
+             "'. Download CSV to keep between sessions."),
+      type = "message", duration = 4)
+  })
 
-  # Classify landmark type from first specimen's row count:
-  # we don't have label info in a bare TPS, so type = "fixed" for all
-  # (sliders are handled by index position passed to gpagen)
-  list(A = A, ids = spec_ids, n_lm = p, n_spec = n)
+  output$tbl_meta <- DT::renderDT({
+    tbl <- meta_table()
+    validate(need(nrow(tbl) > 0, "No metadata saved yet."))
+    DT::datatable(tbl, options = list(scrollX = TRUE, pageLength = 10),
+                  rownames = FALSE)
+  })
+
+  output$dl_meta <- downloadHandler(
+    filename = function() paste0("metadata_", Sys.Date(), ".csv"),
+    content  = function(file) write_csv(meta_table(), file)
+  )
+
+  # ── section 4: TPS analysis ─────────────────────────────────────────────────
+
+  tps_parsed <- eventReactive(input$tps_file, {
+    req(input$tps_file)
+    result <- tryCatch(parse_tps_file(input$tps_file$datapath),
+                       error = function(e) NULL)
+    validate(need(!is.null(result),
+      "Could not parse TPS file. Check format: LM3=n / coords / ID=name."))
+    result
+  })
+
+  output$tbl_tps_specimens <- DT::renderDT({
+    req(tps_parsed()); tp <- tps_parsed()
+    DT::datatable(
+      data.frame(Index = seq_along(tp$ids), Specimen = tp$ids,
+                 N_landmarks = tp$n_lm),
+      options = list(pageLength = 20), rownames = FALSE)
+  })
+
+  output$tbl_tps_ready <- reactive({ !is.null(input$tps_file) })
+  outputOptions(output, "tbl_tps_ready", suspendWhenHidden = FALSE)
+
+  tps_results <- eventReactive(input$run_tps_analysis, {
+    req(tps_parsed()); tp <- tps_parsed()
+    validate(need(tp$n_spec >= 2,
+      paste0("GPA requires at least 2 specimens. Your file has ", tp$n_spec,
+             ". Combine more student TPS files and re-upload.")))
+
+    gpa <- tryCatch(
+      gpagen(tp$A, curves = NULL,
+             ProcD = (input$tps_procD == "full"), print.progress = FALSE),
+      error = function(e) validate(need(FALSE, paste("GPA failed:", e$message)))
+    )
+    pca <- tryCatch(
+      gm.prcomp(gpa$coords),
+      error = function(e) validate(need(FALSE, paste("PCA failed:", e$message)))
+    )
+    list(gpa = gpa, pca = pca, ids = tp$ids)
+  })
+
+  output$tps_gpa_summary <- renderPrint({
+    validate(need(input$run_tps_analysis > 0,
+                  "Click 'Run GPA + PCA' to see results."))
+    req(tps_results()); res <- tps_results()
+    cat("=== GPA (Generalized Procrustes Analysis) ===\n\n")
+    print(summary(res$gpa))
+    cat("\nConsensus shape (first 6 landmarks):\n")
+    print(round(head(res$gpa$consensus, 6), 4))
+  })
+
+  output$tbl_tps_pca <- DT::renderDT({
+    validate(need(input$run_tps_analysis > 0,
+                  "Click 'Run GPA + PCA' to see results."))
+    req(tps_results())
+    pca <- tps_results()$pca
+    eigs <- pca$sdev^2; var_exp <- round(eigs / sum(eigs) * 100, 2)
+    n_pcs <- min(input$tps_n_pcs, length(var_exp))
+    scores_df <- as.data.frame(pca$x[, 1:n_pcs, drop = FALSE])
+    names(scores_df) <- paste0("PC", 1:n_pcs, " (", var_exp[1:n_pcs], "%)")
+    scores_df$Specimen <- rownames(scores_df)
+    scores_df <- scores_df[, c("Specimen", setdiff(names(scores_df),"Specimen"))]
+    DT::datatable(scores_df, options = list(scrollX = TRUE), rownames = FALSE)
+  })
+
+  output$plot_tps_pca <- plotly::renderPlotly({
+    validate(need(input$run_tps_analysis > 0,
+                  "Click 'Run GPA + PCA' to see results."))
+    req(tps_results())
+    pca <- tps_results()$pca
+    eigs <- pca$sdev^2; var_exp <- round(eigs / sum(eigs) * 100, 2)
+    scores <- as.data.frame(pca$x); scores$Specimen <- rownames(scores)
+    p <- ggplot(scores, aes(x = Comp1, y = Comp2, label = Specimen)) +
+      geom_point(size = 3, colour = "#2c7bb6") +
+      geom_text(vjust = -0.8, size = 3) +
+      labs(x = paste0("PC1 (", var_exp[1], "% variance)"),
+           y = paste0("PC2 (", var_exp[2], "% variance)"),
+           title = "PCA morphospace — PC1 vs PC2") +
+      theme_minimal(base_size = 13)
+    plotly::ggplotly(p, tooltip = c("label", "x", "y"))
+  })
+
+  output$plot_tps_scree <- plotly::renderPlotly({
+    validate(need(input$run_tps_analysis > 0,
+                  "Click 'Run GPA + PCA' to see results."))
+    req(tps_results())
+    pca <- tps_results()$pca
+    eigs <- pca$sdev^2; var_exp <- round(eigs / sum(eigs) * 100, 2)
+    n_show <- min(input$tps_n_pcs, length(var_exp))
+    df_sc <- data.frame(
+      PC       = factor(paste0("PC", 1:n_show), levels = paste0("PC", 1:n_show)),
+      Variance = var_exp[1:n_show]
+    )
+    p <- ggplot(df_sc, aes(x = PC, y = Variance)) +
+      geom_col(fill = "#2c7bb6", alpha = 0.8) +
+      geom_line(aes(group = 1), colour = "#d7191c", linewidth = 0.8) +
+      geom_point(colour = "#d7191c", size = 2) +
+      labs(title = "Scree plot", y = "% Variance", x = "") +
+      theme_minimal(base_size = 13)
+    plotly::ggplotly(p)
+  })
+
+  output$plot_tps_consensus <- renderPlot({
+    validate(need(input$run_tps_analysis > 0,
+                  "Click 'Run GPA + PCA' to see results."))
+    req(tps_results())
+    cons <- tps_results()$gpa$consensus
+    df_plot <- data.frame(x = cons[,1], y = cons[,2], z = cons[,3],
+                          label = rownames(cons))
+    par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
+    plot(df_plot$x, df_plot$y, pch = 19, col = "#2c7bb6", cex = 1.2,
+         xlab = "X (R)", ylab = "Y (A)", main = "Consensus — R-A view")
+    text(df_plot$x, df_plot$y, labels = df_plot$label, cex = 0.6, pos = 3)
+    plot(df_plot$x, df_plot$z, pch = 19, col = "#2c7bb6", cex = 1.2,
+         xlab = "X (R)", ylab = "Z (S)", main = "Consensus — R-S view")
+    text(df_plot$x, df_plot$z, labels = df_plot$label, cex = 0.6, pos = 3)
+  })
+
+  # Spinner JS
+  session$onFlushed(function() {
+    shinyjs::runjs("
+      $(document).on('click', '#run_tps_analysis', function() {
+        $('#gpa-running').css('display', 'flex');
+      });
+      $(document).on('shiny:idle', function() {
+        $('#gpa-running').css('display', 'none');
+      });
+    ")
+  })
 }
 
-tps_parsed <- eventReactive(input$tps_file, {
-  req(input$tps_file)
-  result <- tryCatch(
-    parse_tps_file(input$tps_file$datapath),
-    error = function(e) NULL
-  )
-  validate(need(!is.null(result), "Could not parse the TPS file. Check the format."))
-  result
-})
-
-output$tbl_tps_specimens <- renderDT({
-  req(tps_parsed())
-  tp <- tps_parsed()
-  df <- data.frame(
-    Index    = seq_along(tp$ids),
-    Specimen = tp$ids,
-    N_landmarks = tp$n_lm
-  )
-  datatable(df, options = list(pageLength = 20), rownames = FALSE)
-})
-
-# Flag used by conditionalPanel to show tabs only after TPS is uploaded
-output$tbl_tps_ready <- reactive({ !is.null(input$tps_file) })
-outputOptions(output, "tbl_tps_ready", suspendWhenHidden = FALSE)
-
-tps_results <- eventReactive(input$run_tps_analysis, {
-  req(tps_parsed())
-  tp <- tps_parsed()
-
-  validate(
-    need(tp$n_spec >= 2,
-         paste0("GPA requires at least 2 specimens. Your TPS file has ",
-                tp$n_spec, ". Combine more student TPS files into one and re-upload."))
-  )
-
-  # Build sliders for semilandmarks if requested.
-  # Without label info in a raw TPS, we can't auto-detect semi vs fixed.
-  # Sliders must be defined externally or disabled here.
-  sliders <- NULL
-  # (sliders will be wired up once A provides the row indices)
-
-  gpa <- tryCatch(
-    gpagen(tp$A, curves = sliders,
-           ProcD = (input$tps_procD == "full"),
-           print.progress = FALSE),
-    error = function(e) {
-      validate(need(FALSE, paste("GPA failed:", e$message)))
-    }
-  )
-
-  pca <- tryCatch(
-    gm.prcomp(gpa$coords),
-    error = function(e) {
-      validate(need(FALSE, paste("PCA failed:", e$message)))
-    }
-  )
-
-  list(gpa = gpa, pca = pca, ids = tp$ids)
-})
-
-output$tps_gpa_summary <- renderPrint({
-  validate(need(input$run_tps_analysis > 0, "Click 'Run GPA + PCA' to see results."))
-  req(tps_results())
-  res <- tps_results()
-  cat("=== GPA (Generalized Procrustes Analysis) ===\n\n")
-  print(summary(res$gpa))
-  cat("\nConsensus shape (first 6 landmarks):\n")
-  print(round(head(res$gpa$consensus, 6), 4))
-})
-
-output$tbl_tps_pca <- renderDT({
-  validate(need(input$run_tps_analysis > 0, "Click 'Run GPA + PCA' to see results."))
-  req(tps_results())
-  pca     <- tps_results()$pca
-  eigs    <- pca$sdev^2
-  var_exp <- round(eigs / sum(eigs) * 100, 2)
-  n_pcs   <- min(input$tps_n_pcs, length(var_exp))
-
-  scores_df <- as.data.frame(pca$x[, 1:n_pcs, drop = FALSE])
-  names(scores_df) <- paste0("PC", 1:n_pcs, " (", var_exp[1:n_pcs], "%)")
-  scores_df$Specimen <- rownames(scores_df)
-  scores_df <- scores_df[, c("Specimen", setdiff(names(scores_df), "Specimen"))]
-  datatable(scores_df, options = list(scrollX = TRUE), rownames = FALSE)
-})
-
-output$plot_tps_pca <- renderPlotly({
-  validate(need(input$run_tps_analysis > 0, "Click 'Run GPA + PCA' to see results."))
-  req(tps_results())
-  pca     <- tps_results()$pca
-  eigs    <- pca$sdev^2
-  var_exp <- round(eigs / sum(eigs) * 100, 2)
-  scores  <- as.data.frame(pca$x)
-  scores$Specimen <- rownames(scores)
-
-  p <- ggplot(scores, aes(x = Comp1, y = Comp2, label = Specimen)) +
-    geom_point(size = 3, colour = "#2c7bb6") +
-    geom_text(vjust = -0.8, size = 3) +
-    labs(
-      x     = paste0("PC1 (", var_exp[1], "% variance)"),
-      y     = paste0("PC2 (", var_exp[2], "% variance)"),
-      title = "PCA morphospace — PC1 vs PC2"
-    ) +
-    theme_minimal(base_size = 13)
-
-  ggplotly(p, tooltip = c("label", "x", "y"))
-})
-
-output$plot_tps_scree <- renderPlotly({
-  validate(need(input$run_tps_analysis > 0, "Click 'Run GPA + PCA' to see results."))
-  req(tps_results())
-  pca     <- tps_results()$pca
-  eigs    <- pca$sdev^2
-  var_exp <- round(eigs / sum(eigs) * 100, 2)
-  n_show  <- min(input$tps_n_pcs, length(var_exp))
-  df_sc   <- data.frame(
-    PC       = factor(paste0("PC", 1:n_show), levels = paste0("PC", 1:n_show)),
-    Variance = var_exp[1:n_show]
-  )
-
-  p <- ggplot(df_sc, aes(x = PC, y = Variance)) +
-    geom_col(fill = "#2c7bb6", alpha = 0.8) +
-    geom_line(aes(group = 1), colour = "#d7191c", linewidth = 0.8) +
-    geom_point(colour = "#d7191c", size = 2) +
-    labs(title = "Scree plot — variance explained per PC",
-         y = "% Variance", x = "") +
-    theme_minimal(base_size = 13)
-
-  ggplotly(p)
-})
-
-output$plot_tps_consensus <- renderPlot({
-  validate(need(input$run_tps_analysis > 0, "Click 'Run GPA + PCA' to see results."))
-  req(tps_results())
-  cons    <- tps_results()$gpa$consensus
-  df_plot <- data.frame(
-    x     = cons[, 1],
-    y     = cons[, 2],
-    z     = cons[, 3],
-    label = rownames(cons)
-  )
-
-  par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
-
-  plot(df_plot$x, df_plot$y, pch = 19, col = "#2c7bb6", cex = 1.2,
-       xlab = "X (R)", ylab = "Y (A)", main = "Consensus — XY plane (R-A view)")
-  text(df_plot$x, df_plot$y, labels = df_plot$label, cex = 0.6, pos = 3)
-
-  plot(df_plot$x, df_plot$z, pch = 19, col = "#2c7bb6", cex = 1.2,
-       xlab = "X (R)", ylab = "Z (S)", main = "Consensus — XZ plane (R-S view)")
-  text(df_plot$x, df_plot$z, labels = df_plot$label, cex = 0.6, pos = 3)
-})
+shinyApp(ui, server)
 ```

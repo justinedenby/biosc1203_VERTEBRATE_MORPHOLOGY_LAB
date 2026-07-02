@@ -1,10 +1,14 @@
+project:
+  type: website
+
 website:
   title: "biosc1203_vml"
   navbar:
     left:
       - href: index.qmd
         text: Home
-      - about.qmd
+      - href: about.qmd
+        text: Geomorphometric Analysis
 
 format:
   html:
@@ -14,5 +18,5 @@ format:
     css: styles.css
     toc: true
 
-
-
+filters:
+  - shinylive
