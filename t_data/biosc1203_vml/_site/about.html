@@ -44,9 +44,9 @@ ul.task-list li input[type="checkbox"] {
 <link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="site_libs/bootstrap/bootstrap-a19942f474e303d9fe7d81a17819263b.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <meta name="shinylive:serviceworker_dir" content=".">
-<script src="site_libs/quarto-contrib/shinylive-0.10.12/shinylive/load-shinylive-sw.js" type="module"></script>
-<script src="site_libs/quarto-contrib/shinylive-0.10.12/shinylive/run-python-blocks.js" type="module"></script>
-<link href="site_libs/quarto-contrib/shinylive-0.10.12/shinylive/shinylive.css" rel="stylesheet">
+<script src="site_libs/quarto-contrib/shinylive-0.2.3/shinylive/load-shinylive-sw.js" type="module"></script>
+<script src="site_libs/quarto-contrib/shinylive-0.2.3/shinylive/run-python-blocks.js" type="module"></script>
+<link href="site_libs/quarto-contrib/shinylive-0.2.3/shinylive/shinylive.css" rel="stylesheet">
 <link href="site_libs/quarto-contrib/shinylive-quarto-css/shinylive-quarto.css" rel="stylesheet">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
@@ -76,66 +76,36 @@ ul.task-list li input[type="checkbox"] {
   }
 }</script>
 <style>
-/* ── Tab strip spacing ───────────────────────────────────────── */
-.nav-tabs {
-  gap: 4px;
-  flex-wrap: wrap;
-  border-bottom: 2px solid #c8a96e;
-}
+.nav-tabs { gap: 4px; flex-wrap: wrap; border-bottom: 2px solid #c8a96e; }
 .nav-tabs .nav-item { margin-bottom: -2px; }
 .nav-tabs .nav-link {
-  background-color: #f5f0e8;
-  color: #5a4a2f;
-  border: 1px solid #d4c5a0;
-  border-bottom: none;
-  border-radius: 6px 6px 0 0;
-  padding: 6px 14px;
-  font-size: 0.85rem;
-  font-weight: 500;
-  transition: background-color 0.15s, color 0.15s;
-  white-space: nowrap;
+  background-color: #f5f0e8; color: #5a4a2f;
+  border: 1px solid #d4c5a0; border-bottom: none;
+  border-radius: 6px 6px 0 0; padding: 6px 14px;
+  font-size: 0.85rem; font-weight: 500;
+  transition: background-color 0.15s, color 0.15s; white-space: nowrap;
 }
 .nav-tabs .nav-link:hover {
-  background-color: #e8dfc8;
-  color: #3b2f1a;
-  border-color: #c8a96e;
+  background-color: #e8dfc8; color: #3b2f1a; border-color: #c8a96e;
 }
 .nav-tabs .nav-link.active {
-  background-color: #8c6d3f;
-  color: #ffffff;
-  border-color: #8c6d3f;
-  border-bottom-color: #8c6d3f;
-  font-weight: 600;
+  background-color: #8c6d3f; color: #ffffff;
+  border-color: #8c6d3f; border-bottom-color: #8c6d3f; font-weight: 600;
 }
 .tab-content {
-  border: 1px solid #d4c5a0;
-  border-top: none;
-  border-radius: 0 0 6px 6px;
-  padding: 16px;
-  background: #ffffff;
+  border: 1px solid #d4c5a0; border-top: none;
+  border-radius: 0 0 6px 6px; padding: 16px; background: #ffffff;
 }
-#gpa-running {
-  display: none;
-  align-items: center;
-  gap: 12px;
-  margin-top: 10px;
-  padding: 10px 14px;
-  background: #f5f0e8;
-  border: 1px solid #c8a96e;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  color: #5a4a2f;
+/* Simple scrollable, styled tables to replace DT */
+.app-table { max-height: 480px; overflow: auto; font-size: 0.85rem; }
+.app-table table { border-collapse: collapse; width: 100%; }
+.app-table th, .app-table td {
+  border: 1px solid #d4c5a0; padding: 4px 8px; text-align: left;
 }
-.gpa-spinner {
-  width: 20px;
-  height: 20px;
-  border: 3px solid #d4c5a0;
-  border-top-color: #8c6d3f;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  flex-shrink: 0;
+.app-table th {
+  background: #8c6d3f; color: #fff; position: sticky; top: 0;
 }
-@keyframes spin { to { transform: rotate(360deg); } }
+.app-table tr:nth-child(even) { background: #f5f0e8; }
 </style>
 
 
@@ -210,8 +180,9 @@ ul.task-list li input[type="checkbox"] {
 #|   shinylive does not work in self-contained HTML documents.
 #|   Please set `embed-resources: false` in your metadata.
 #| standalone: true
-#| viewerHeight: 900
+#| viewerHeight: 950
 
+## file: app.R
 library(shiny)
 library(bslib)
 
@@ -226,13 +197,11 @@ ui &lt;- page_navbar(
       sidebar = sidebar(
         fileInput("csv_file", "Upload CSV file",
           accept = c(".csv", "text/csv"),
-          buttonLabel = "Browse...",
-          placeholder = "No file selected"),
+          buttonLabel = "Browse...", placeholder = "No file selected"),
         hr(),
         textInput("specimen_name", "Specimen name", value = "Genus_species",
           placeholder = "e.g. Homo_sapiens"),
-        helpText("Use Genus_species format. Becomes the ID= field in TPS
-                  and the key for saving metadata."),
+        helpText("Use Genus_species format. Becomes the ID= field in TPS."),
         hr(),
         h5("Column mapping"),
         helpText("Match your CSV columns to the fields below."),
@@ -244,8 +213,8 @@ ui &lt;- page_navbar(
       conditionalPanel(
         condition = "output.tbl_raw_ready",
         tabsetPanel(
-          tabPanel("Raw data",                DT::DTOutput("tbl_raw")),
-          tabPanel("Parsed landmarks",        DT::DTOutput("tbl_parsed")),
+          tabPanel("Raw data",                htmlOutput("tbl_raw")),
+          tabPanel("Parsed landmarks",        htmlOutput("tbl_parsed")),
           tabPanel("Landmark classification", verbatimTextOutput("lm_summary"))
         )
       )
@@ -265,51 +234,16 @@ ui &lt;- page_navbar(
     )
   ),
 
-  # ── Section 3: Ecological Metadata ──────────────────────────────────────────
-  nav_panel("3 · Ecological Metadata",
-    layout_sidebar(
-      sidebar = sidebar(
-        h5("Load saved metadata"),
-        helpText("Enter your specimen name in Section 1, then click Load."),
-        actionButton("load_meta", "Load from specimen name", width = "100%"),
-        hr(),
-        fileInput("meta_upload", "Or reload a saved metadata CSV",
-          accept = c(".csv"), buttonLabel = "Browse..."),
-        hr(),
-        h5("Enter metadata for this specimen"),
-        textAreaInput("meta_habitat", "Habitat", rows = 3,
-          placeholder = "e.g. tropical rainforest understory, rocky arid scrubland..."),
-        textAreaInput("meta_activity", "Activity period", rows = 2,
-          placeholder = "e.g. diurnal, nocturnal, crepuscular, cathemeral..."),
-        textAreaInput("meta_locomotion", "Locomotion", rows = 3,
-          placeholder = "e.g. arboreal climbing, gliding, swimming, saltatorial..."),
-        textAreaInput("meta_notes", "Additional notes", rows = 3,
-          placeholder = "Diet, body size, observer name..."),
-        hr(),
-        actionButton("save_meta", "Save metadata",
-                     class = "btn-success", width = "100%")
-      ),
-      h5("Saved metadata for all specimens"),
-      helpText("Download this CSV to save your work. Re-upload it next session to reload."),
-      DT::DTOutput("tbl_meta"),
-      hr(),
-      downloadButton("dl_meta", "Download metadata CSV",
-                     class = "btn-outline-secondary")
-    )
-  ),
-
-  # ── Section 4: TPS Analysis ──────────────────────────────────────────────────
-  nav_panel("4 · TPS Analysis",
+  # ── Section 3: TPS Analysis (GPA + PCA) ─────────────────────────────────────
+  nav_panel("3 · TPS Analysis",
     layout_sidebar(
       sidebar = sidebar(
         h5("Upload TPS file"),
         helpText("Upload a TPS file with one or more specimens
-                  (LM3=n / coordinates / ID=name).
-                  Combine multiple student files into one before uploading."),
+                  (LM3=n / coordinates / ID=name)."),
         fileInput("tps_file", "Upload TPS file",
           accept = c(".tps", "text/plain"),
-          buttonLabel = "Browse...",
-          placeholder = "No file selected"),
+          buttonLabel = "Browse...", placeholder = "No file selected"),
         hr(),
         h5("GPA settings"),
         checkboxInput("tps_has_sliders",
@@ -323,24 +257,64 @@ ui &lt;- page_navbar(
                      value = 3, min = 2, max = 10),
         hr(),
         actionButton("run_tps_analysis", "Run GPA + PCA",
-                     class = "btn-primary", width = "100%"),
-        tags$div(id = "gpa-running",
-          tags$div(class = "gpa-spinner"),
-          "Running GPA + PCA — this may take a moment..."
-        )
+                     class = "btn-primary", width = "100%")
       ),
       conditionalPanel(
         condition = "output.tbl_tps_ready",
         tabsetPanel(
-          tabPanel("Specimens in TPS",   DT::DTOutput("tbl_tps_specimens")),
+          tabPanel("Specimens in TPS",   htmlOutput("tbl_tps_specimens")),
           tabPanel("GPA summary",        verbatimTextOutput("tps_gpa_summary")),
-          tabPanel("PCA scores",         DT::DTOutput("tbl_tps_pca")),
-          tabPanel("PCA plot",           plotly::plotlyOutput("plot_tps_pca",
-                                                              height = "500px")),
-          tabPanel("Variance explained", plotly::plotlyOutput("plot_tps_scree",
-                                                              height = "400px")),
+          tabPanel("PCA scores",         htmlOutput("tbl_tps_pca")),
+          tabPanel("PCA plot",           plotOutput("plot_tps_pca",
+                                                    height = "500px")),
+          tabPanel("Variance explained", plotOutput("plot_tps_scree",
+                                                    height = "400px")),
           tabPanel("Consensus shape",    plotOutput("plot_tps_consensus",
                                                     height = "500px"))
+        )
+      )
+    )
+  ),
+
+  # ── Section 4: Phylogenetic Analyses (PGLS) ─────────────────────────────────
+  nav_panel("4 · Phylogenetic Analyses",
+    layout_sidebar(
+      sidebar = sidebar(
+        h5("Upload species × trait table"),
+        helpText("CSV with a species column (e.g. genus_species) plus any
+                  number of trait columns. Numeric and categorical traits are
+                  detected automatically."),
+        fileInput("trait_file", "Upload trait CSV",
+          accept = c(".csv", "text/csv"),
+          buttonLabel = "Browse...", placeholder = "No file selected"),
+        helpText("Species names are matched to the tree case-insensitively;
+                  spaces are converted to underscores automatically."),
+        hr(),
+        h5("PGLS model"),
+        helpText("Fit: response ~ predictor, correcting for phylogeny
+                  via nlme::gls."),
+        uiOutput("pgls_response_ui"),
+        uiOutput("pgls_predictor_ui"),
+        selectInput("pgls_model", "Phylogenetic correlation",
+          choices = c("Pagel's lambda" = "lambda",
+                      "Brownian motion" = "brownian"),
+          selected = "lambda"),
+        hr(),
+        actionButton("run_pgls", "Run PGLS",
+                     class = "btn-primary", width = "100%")
+      ),
+      conditionalPanel(
+        condition = "output.trait_ready",
+        tabsetPanel(
+          tabPanel("Trait data",       htmlOutput("tbl_traits")),
+          tabPanel("Tree matching",    verbatimTextOutput("tree_match_summary")),
+          tabPanel("Master tree",      plotOutput("plot_master_tree",
+                                                  height = "650px")),
+          tabPanel("Pruned tree",      plotOutput("plot_pruned_tree",
+                                                  height = "550px")),
+          tabPanel("PGLS summary",     verbatimTextOutput("pgls_summary")),
+          tabPanel("PGLS plot",        plotOutput("plot_pgls",
+                                                 height = "500px"))
         )
       )
     )
@@ -350,25 +324,34 @@ ui &lt;- page_navbar(
 # ── Server ────────────────────────────────────────────────────────────────────
 server &lt;- function(input, output, session) {
 
-  # Install packages in WebR on first run
-  if (!requireNamespace("geomorph",  quietly = TRUE)) webr::install("geomorph")
-  if (!requireNamespace("DT",        quietly = TRUE)) webr::install("DT")
-  if (!requireNamespace("ggplot2",   quietly = TRUE)) webr::install("ggplot2")
-  if (!requireNamespace("plotly",    quietly = TRUE)) webr::install("plotly")
-  if (!requireNamespace("readr",     quietly = TRUE)) webr::install("readr")
-  if (!requireNamespace("dplyr",     quietly = TRUE)) webr::install("dplyr")
-  if (!requireNamespace("stringr",   quietly = TRUE)) webr::install("stringr")
-  if (!requireNamespace("bslib",     quietly = TRUE)) webr::install("bslib")
+  # Install packages in WebR on first run (runtime, browser-side).
+  # DT and plotly are intentionally NOT used — their htmlwidgets runtime
+  # throws a "data is null / deps" error under shinylive. Tables are rendered
+  # as plain HTML and plots as static base/ggplot images instead.
+  for (pkg in c("geomorph","ggplot2","readr","dplyr","stringr","ape","nlme")) {
+    if (!requireNamespace(pkg, quietly = TRUE)) webr::install(pkg)
+  }
 
-  library(geomorph)
-  library(DT)
-  library(ggplot2)
-  library(plotly)
-  library(readr)
-  library(dplyr)
-  library(stringr)
+  library(geomorph); library(ggplot2)
+  library(readr);    library(dplyr); library(stringr)
+  library(ape);      library(nlme)
 
   # ── helpers ─────────────────────────────────────────────────────────────────
+
+  # Render a data frame as a simple scrollable HTML table (replaces DT).
+  html_table &lt;- function(df, digits = 4) {
+    df &lt;- as.data.frame(df)
+    num &lt;- vapply(df, is.numeric, logical(1))
+    df[num] &lt;- lapply(df[num], function(v) round(v, digits))
+    hdr &lt;- paste0("&lt;th&gt;", names(df), "&lt;/th&gt;", collapse = "")
+    rows &lt;- apply(df, 1, function(r)
+      paste0("&lt;tr&gt;", paste0("&lt;td&gt;", r, "&lt;/td&gt;", collapse = ""), "&lt;/tr&gt;"))
+    HTML(paste0(
+      "&lt;div class='app-table'&gt;&lt;table&gt;&lt;thead&gt;&lt;tr&gt;", hdr,
+      "&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;", paste0(rows, collapse = ""),
+      "&lt;/tbody&gt;&lt;/table&gt;&lt;/div&gt;"
+    ))
+  }
 
   read_csv_flexible &lt;- function(path) {
     tryCatch({
@@ -377,6 +360,12 @@ server &lt;- function(input, output, session) {
                                           show_col_types = FALSE)
       df
     }, error = function(e) NULL)
+  }
+
+  norm_species &lt;- function(x) {
+    x &lt;- trimws(as.character(x))
+    x &lt;- gsub("\\s+", "_", x)
+    tolower(x)
   }
 
   classify_landmarks &lt;- function(df, label_col, x_col, y_col, z_col) {
@@ -408,7 +397,6 @@ server &lt;- function(input, output, session) {
     lines &lt;- readLines(path, warn = FALSE)
     lines &lt;- lines[nzchar(trimws(lines))]
     specimens &lt;- list(); spec_ids &lt;- character(); i &lt;- 1
-
     while (i &lt;= length(lines)) {
       line &lt;- trimws(lines[i])
       if (grepl("^LM3?=", line, ignore.case = TRUE)) {
@@ -441,12 +429,22 @@ server &lt;- function(input, output, session) {
     list(A = A, ids = spec_ids, n_lm = p, n_spec = n)
   }
 
-  # ── section 1 &amp; 2 ───────────────────────────────────────────────────────────
-
-  raw_data &lt;- reactive({
-    req(input$csv_file)
-    read_csv_flexible(input$csv_file$datapath)
+  master_tree &lt;- reactive({
+    tryCatch(read.tree("data/rodent_tree.nwk"), error = function(e) NULL)
   })
+
+  # Cache the normalized tip labels once so every downstream output
+  # (match summary, both tree plots, PGLS) reuses them instead of
+  # recomputing norm_species() over the whole tree each render — this
+  # matters under WebR where each call is slow.
+  master_tips_norm &lt;- reactive({
+    tr &lt;- master_tree(); req(tr)
+    norm_species(tr$tip.label)
+  })
+
+  # ── section 1 &amp; 2: CSV / parse / TPS ────────────────────────────────────────
+
+  raw_data &lt;- reactive({ req(input$csv_file); read_csv_flexible(input$csv_file$datapath) })
 
   output$col_pickers &lt;- renderUI({
     df &lt;- raw_data(); req(df); cols &lt;- names(df)
@@ -466,14 +464,10 @@ server &lt;- function(input, output, session) {
     )
   })
 
-  output$tbl_raw &lt;- DT::renderDT({
-    req(raw_data())
-    DT::datatable(raw_data(),
-                  options = list(scrollX = TRUE, pageLength = 10),
-                  rownames = FALSE)
+  output$tbl_raw &lt;- renderUI({ req(raw_data()); html_table(head(raw_data(), 100)) })
+  output$tbl_raw_ready &lt;- reactive({
+    isTRUE(tryCatch(!is.null(raw_data()), error = function(e) FALSE))
   })
-
-  output$tbl_raw_ready &lt;- reactive({ !is.null(raw_data()) })
   outputOptions(output, "tbl_raw_ready", suspendWhenHidden = FALSE)
 
   parsed &lt;- eventReactive(input$run_parse, {
@@ -482,15 +476,7 @@ server &lt;- function(input, output, session) {
                        input$col_x, input$col_y, input$col_z)
   })
 
-  output$tbl_parsed &lt;- DT::renderDT({
-    req(parsed())
-    DT::datatable(
-      parsed() |&gt; mutate(across(c(x, y, z), \(v) round(v, 4))),
-      options = list(scrollX = TRUE, pageLength = 15), rownames = FALSE
-    ) |&gt;
-      DT::formatStyle("type", backgroundColor = DT::styleEqual(
-        c("fixed", "semi"), c("#d4edda", "#cce5ff")))
-  })
+  output$tbl_parsed &lt;- renderUI({ req(parsed()); html_table(parsed()) })
 
   output$lm_summary &lt;- renderPrint({
     req(parsed()); df &lt;- parsed()
@@ -503,85 +489,14 @@ server &lt;- function(input, output, session) {
     cat(paste(" ", df$label[df$type == "semi"],  collapse = "\n"), "\n")
   })
 
-  tps_lines &lt;- reactive({
-    req(parsed())
-    build_tps(parsed(), input$specimen_name)
-  })
-
-  output$tps_preview &lt;- renderText({
-    req(tps_lines())
-    paste(tps_lines(), collapse = "\n")
-  })
-
+  tps_lines &lt;- reactive({ req(parsed()); build_tps(parsed(), input$specimen_name) })
+  output$tps_preview &lt;- renderText({ req(tps_lines()); paste(tps_lines(), collapse = "\n") })
   output$dl_tps &lt;- downloadHandler(
     filename = function() paste0(input$specimen_name, ".tps"),
     content  = function(file) writeLines(tps_lines(), file)
   )
 
-  # ── section 3: metadata ─────────────────────────────────────────────────────
-
-  meta_table &lt;- reactiveVal(tibble(
-    specimen = character(), habitat = character(), activity = character(),
-    locomotion = character(), notes = character(), saved_at = character()
-  ))
-
-  upsert_meta &lt;- function(tbl, specimen, habitat, activity, locomotion, notes) {
-    bind_rows(
-      tbl |&gt; filter(specimen != !!specimen),
-      tibble(specimen = specimen, habitat = habitat, activity = activity,
-             locomotion = locomotion, notes = notes,
-             saved_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
-    )
-  }
-
-  observeEvent(input$load_meta, {
-    req(input$specimen_name)
-    row &lt;- meta_table() |&gt; filter(specimen == input$specimen_name)
-    if (nrow(row) == 1) {
-      updateTextAreaInput(session, "meta_habitat",    value = row$habitat)
-      updateTextAreaInput(session, "meta_activity",   value = row$activity)
-      updateTextAreaInput(session, "meta_locomotion", value = row$locomotion)
-      updateTextAreaInput(session, "meta_notes",      value = row$notes)
-    } else {
-      showNotification(paste0("No saved metadata for '",
-                               input$specimen_name, "'."),
-                       type = "warning", duration = 4)
-    }
-  })
-
-  observeEvent(input$meta_upload, {
-    df &lt;- tryCatch(read_csv(input$meta_upload$datapath,
-                            show_col_types = FALSE), error = function(e) NULL)
-    if (!is.null(df)) {
-      meta_table(df)
-      showNotification("Metadata reloaded.", type = "message", duration = 3)
-    }
-  })
-
-  observeEvent(input$save_meta, {
-    req(input$specimen_name)
-    meta_table(upsert_meta(meta_table(), input$specimen_name,
-                           input$meta_habitat, input$meta_activity,
-                           input$meta_locomotion, input$meta_notes))
-    showNotification(
-      paste0("Saved '", input$specimen_name,
-             "'. Download CSV to keep between sessions."),
-      type = "message", duration = 4)
-  })
-
-  output$tbl_meta &lt;- DT::renderDT({
-    tbl &lt;- meta_table()
-    validate(need(nrow(tbl) &gt; 0, "No metadata saved yet."))
-    DT::datatable(tbl, options = list(scrollX = TRUE, pageLength = 10),
-                  rownames = FALSE)
-  })
-
-  output$dl_meta &lt;- downloadHandler(
-    filename = function() paste0("metadata_", Sys.Date(), ".csv"),
-    content  = function(file) write_csv(meta_table(), file)
-  )
-
-  # ── section 4: TPS analysis ─────────────────────────────────────────────────
+  # ── section 3: TPS analysis ─────────────────────────────────────────────────
 
   tps_parsed &lt;- eventReactive(input$tps_file, {
     req(input$tps_file)
@@ -592,38 +507,31 @@ server &lt;- function(input, output, session) {
     result
   })
 
-  output$tbl_tps_specimens &lt;- DT::renderDT({
+  output$tbl_tps_specimens &lt;- renderUI({
     req(tps_parsed()); tp &lt;- tps_parsed()
-    DT::datatable(
-      data.frame(Index = seq_along(tp$ids), Specimen = tp$ids,
-                 N_landmarks = tp$n_lm),
-      options = list(pageLength = 20), rownames = FALSE)
+    html_table(data.frame(Index = seq_along(tp$ids), Specimen = tp$ids,
+                          N_landmarks = tp$n_lm))
   })
-
-  output$tbl_tps_ready &lt;- reactive({ !is.null(input$tps_file) })
+  output$tbl_tps_ready &lt;- reactive({
+    isTRUE(tryCatch(!is.null(input$tps_file), error = function(e) FALSE))
+  })
   outputOptions(output, "tbl_tps_ready", suspendWhenHidden = FALSE)
 
   tps_results &lt;- eventReactive(input$run_tps_analysis, {
     req(tps_parsed()); tp &lt;- tps_parsed()
     validate(need(tp$n_spec &gt;= 2,
-      paste0("GPA requires at least 2 specimens. Your file has ", tp$n_spec,
-             ". Combine more student TPS files and re-upload.")))
-
+      paste0("GPA requires at least 2 specimens. Your file has ", tp$n_spec, ".")))
     gpa &lt;- tryCatch(
-      gpagen(tp$A, curves = NULL,
-             ProcD = (input$tps_procD == "full"), print.progress = FALSE),
-      error = function(e) validate(need(FALSE, paste("GPA failed:", e$message)))
-    )
-    pca &lt;- tryCatch(
-      gm.prcomp(gpa$coords),
-      error = function(e) validate(need(FALSE, paste("PCA failed:", e$message)))
-    )
+      gpagen(tp$A, curves = NULL, ProcD = (input$tps_procD == "full"),
+             print.progress = FALSE),
+      error = function(e) validate(need(FALSE, paste("GPA failed:", e$message))))
+    pca &lt;- tryCatch(gm.prcomp(gpa$coords),
+      error = function(e) validate(need(FALSE, paste("PCA failed:", e$message))))
     list(gpa = gpa, pca = pca, ids = tp$ids)
   })
 
   output$tps_gpa_summary &lt;- renderPrint({
-    validate(need(input$run_tps_analysis &gt; 0,
-                  "Click 'Run GPA + PCA' to see results."))
+    validate(need(input$run_tps_analysis &gt; 0, "Click 'Run GPA + PCA' to see results."))
     req(tps_results()); res &lt;- tps_results()
     cat("=== GPA (Generalized Procrustes Analysis) ===\n\n")
     print(summary(res$gpa))
@@ -631,62 +539,50 @@ server &lt;- function(input, output, session) {
     print(round(head(res$gpa$consensus, 6), 4))
   })
 
-  output$tbl_tps_pca &lt;- DT::renderDT({
-    validate(need(input$run_tps_analysis &gt; 0,
-                  "Click 'Run GPA + PCA' to see results."))
-    req(tps_results())
-    pca &lt;- tps_results()$pca
+  output$tbl_tps_pca &lt;- renderUI({
+    validate(need(input$run_tps_analysis &gt; 0, "Click 'Run GPA + PCA' to see results."))
+    req(tps_results()); pca &lt;- tps_results()$pca
     eigs &lt;- pca$sdev^2; var_exp &lt;- round(eigs / sum(eigs) * 100, 2)
     n_pcs &lt;- min(input$tps_n_pcs, length(var_exp))
     scores_df &lt;- as.data.frame(pca$x[, 1:n_pcs, drop = FALSE])
     names(scores_df) &lt;- paste0("PC", 1:n_pcs, " (", var_exp[1:n_pcs], "%)")
-    scores_df$Specimen &lt;- rownames(scores_df)
-    scores_df &lt;- scores_df[, c("Specimen", setdiff(names(scores_df),"Specimen"))]
-    DT::datatable(scores_df, options = list(scrollX = TRUE), rownames = FALSE)
+    scores_df &lt;- cbind(Specimen = rownames(scores_df), scores_df)
+    html_table(scores_df)
   })
 
-  output$plot_tps_pca &lt;- plotly::renderPlotly({
-    validate(need(input$run_tps_analysis &gt; 0,
-                  "Click 'Run GPA + PCA' to see results."))
-    req(tps_results())
-    pca &lt;- tps_results()$pca
+  output$plot_tps_pca &lt;- renderPlot({
+    validate(need(input$run_tps_analysis &gt; 0, "Click 'Run GPA + PCA' to see results."))
+    req(tps_results()); pca &lt;- tps_results()$pca
     eigs &lt;- pca$sdev^2; var_exp &lt;- round(eigs / sum(eigs) * 100, 2)
     scores &lt;- as.data.frame(pca$x); scores$Specimen &lt;- rownames(scores)
-    p &lt;- ggplot(scores, aes(x = Comp1, y = Comp2, label = Specimen)) +
+    ggplot(scores, aes(x = Comp1, y = Comp2, label = Specimen)) +
       geom_point(size = 3, colour = "#2c7bb6") +
       geom_text(vjust = -0.8, size = 3) +
       labs(x = paste0("PC1 (", var_exp[1], "% variance)"),
            y = paste0("PC2 (", var_exp[2], "% variance)"),
            title = "PCA morphospace — PC1 vs PC2") +
       theme_minimal(base_size = 13)
-    plotly::ggplotly(p, tooltip = c("label", "x", "y"))
   })
 
-  output$plot_tps_scree &lt;- plotly::renderPlotly({
-    validate(need(input$run_tps_analysis &gt; 0,
-                  "Click 'Run GPA + PCA' to see results."))
-    req(tps_results())
-    pca &lt;- tps_results()$pca
+  output$plot_tps_scree &lt;- renderPlot({
+    validate(need(input$run_tps_analysis &gt; 0, "Click 'Run GPA + PCA' to see results."))
+    req(tps_results()); pca &lt;- tps_results()$pca
     eigs &lt;- pca$sdev^2; var_exp &lt;- round(eigs / sum(eigs) * 100, 2)
     n_show &lt;- min(input$tps_n_pcs, length(var_exp))
     df_sc &lt;- data.frame(
-      PC       = factor(paste0("PC", 1:n_show), levels = paste0("PC", 1:n_show)),
-      Variance = var_exp[1:n_show]
-    )
-    p &lt;- ggplot(df_sc, aes(x = PC, y = Variance)) +
+      PC = factor(paste0("PC", 1:n_show), levels = paste0("PC", 1:n_show)),
+      Variance = var_exp[1:n_show])
+    ggplot(df_sc, aes(x = PC, y = Variance)) +
       geom_col(fill = "#2c7bb6", alpha = 0.8) +
       geom_line(aes(group = 1), colour = "#d7191c", linewidth = 0.8) +
       geom_point(colour = "#d7191c", size = 2) +
       labs(title = "Scree plot", y = "% Variance", x = "") +
       theme_minimal(base_size = 13)
-    plotly::ggplotly(p)
   })
 
   output$plot_tps_consensus &lt;- renderPlot({
-    validate(need(input$run_tps_analysis &gt; 0,
-                  "Click 'Run GPA + PCA' to see results."))
-    req(tps_results())
-    cons &lt;- tps_results()$gpa$consensus
+    validate(need(input$run_tps_analysis &gt; 0, "Click 'Run GPA + PCA' to see results."))
+    req(tps_results()); cons &lt;- tps_results()$gpa$consensus
     df_plot &lt;- data.frame(x = cons[,1], y = cons[,2], z = cons[,3],
                           label = rownames(cons))
     par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
@@ -698,20 +594,302 @@ server &lt;- function(input, output, session) {
     text(df_plot$x, df_plot$z, labels = df_plot$label, cex = 0.6, pos = 3)
   })
 
-  # Spinner JS
-  session$onFlushed(function() {
-    shinyjs::runjs("
-      $(document).on('click', '#run_tps_analysis', function() {
-        $('#gpa-running').css('display', 'flex');
-      });
-      $(document).on('shiny:idle', function() {
-        $('#gpa-running').css('display', 'none');
-      });
-    ")
+  # ── section 4: phylogenetic analyses (PGLS) ─────────────────────────────────
+
+  trait_data &lt;- reactive({
+    req(input$trait_file)
+    df &lt;- read_csv_flexible(input$trait_file$datapath)
+    validate(need(!is.null(df) &amp;&amp; ncol(df) &gt;= 2,
+      "Trait CSV needs a species column plus at least one trait column."))
+    names(df)[1] &lt;- "species_raw"
+    df$species_match &lt;- norm_species(df$species_raw)
+    df
+  })
+
+  output$trait_ready &lt;- reactive({
+    isTRUE(tryCatch(!is.null(input$trait_file), error = function(e) FALSE))
+  })
+  outputOptions(output, "trait_ready", suspendWhenHidden = FALSE)
+
+  trait_cols &lt;- reactive({
+    df &lt;- trait_data()
+    setdiff(names(df), c("species_raw", "species_match"))
+  })
+
+  trait_types &lt;- reactive({
+    df &lt;- trait_data(); cols &lt;- trait_cols()
+    sapply(cols, function(cc) if (is.numeric(df[[cc]])) "numeric" else "categorical")
+  })
+
+  output$tbl_traits &lt;- renderUI({
+    req(trait_data())
+    html_table(trait_data() |&gt; select(-species_match))
+  })
+
+  output$pgls_response_ui &lt;- renderUI({
+    req(trait_data())
+    tt &lt;- trait_types(); num_cols &lt;- names(tt)[tt == "numeric"]
+    validate(need(length(num_cols) &gt;= 1,
+      "Need at least one numeric trait to use as the response."))
+    selectInput("pgls_response", "Response (Y, continuous)",
+                choices = num_cols, selected = num_cols[1])
+  })
+
+  output$pgls_predictor_ui &lt;- renderUI({
+    req(trait_data(), input$pgls_response)
+    tt      &lt;- trait_types()
+    choices &lt;- setdiff(trait_cols(), input$pgls_response)
+    validate(need(length(choices) &gt;= 1, "Need at least one other trait as predictor."))
+
+    num_choices &lt;- choices[tt[choices] == "numeric"]
+    cat_choices &lt;- choices[tt[choices] == "categorical"]
+
+    # Group the dropdown so students see the type of each predictor.
+    # Numeric predictors are listed first and selected by default so the
+    # regression line shows unless they deliberately pick a category.
+    grouped &lt;- list()
+    if (length(num_choices))
+      grouped[["Numeric → regression line"]] &lt;- as.list(num_choices)
+    if (length(cat_choices))
+      grouped[["Categorical → group comparison"]] &lt;- as.list(cat_choices)
+
+    default &lt;- if (length(num_choices)) num_choices[1] else cat_choices[1]
+
+    tagList(
+      selectInput("pgls_predictor", "Predictor (X)",
+                  choices = grouped, selected = default),
+      uiOutput("pgls_plot_hint")
+    )
+  })
+
+  # Live hint under the predictor dropdown telling the student what they'll get.
+  output$pgls_plot_hint &lt;- renderUI({
+    req(input$pgls_predictor)
+    tt &lt;- trait_types()
+    if (isTRUE(tt[[input$pgls_predictor]] == "numeric")) {
+      div(style = "font-size:0.8rem; color:#5a4a2f; margin-top:-8px;",
+          "Numeric predictor → the PGLS plot shows a fitted regression line.")
+    } else {
+      div(style = "font-size:0.8rem; color:#5a4a2f; margin-top:-8px;",
+          "Categorical predictor → no regression line (a line through categories
+           isn't meaningful). The plot shows group means instead; the PGLS
+           model is still fit and reported in the summary tab.")
+    }
+  })
+
+  tree_match &lt;- reactive({
+    req(trait_data(), master_tree())
+    tr &lt;- master_tree()
+    validate(need(!is.null(tr), "Master tree could not be loaded from data/rodent_tree.nwk."))
+    tips_norm  &lt;- master_tips_norm()
+    trait_norm &lt;- trait_data()$species_match
+    matched    &lt;- intersect(trait_norm, tips_norm)
+    list(tree = tr, tips_norm = tips_norm, trait_norm = trait_norm,
+         matched = matched,
+         unmatched = setdiff(trait_norm, tips_norm),
+         in_tree_only = setdiff(tips_norm, trait_norm))
+  })
+
+  output$tree_match_summary &lt;- renderPrint({
+    req(tree_match()); tm &lt;- tree_match()
+    cat("Master tree tips:", length(tm$tips_norm), "\n")
+    cat("Species in trait CSV:", length(tm$trait_norm), "\n")
+    cat("Matched to tree:", length(tm$matched), "\n\n")
+    if (length(tm$unmatched) &gt; 0) {
+      cat("In CSV but NOT in tree (check spelling):\n")
+      cat(paste(" ", tm$unmatched, collapse = "\n"), "\n\n")
+    } else cat("All CSV species matched the tree.\n\n")
+    cat("Matched species used in analyses:\n")
+    cat(paste(" ", tm$matched, collapse = "\n"), "\n")
+  })
+
+  output$plot_master_tree &lt;- renderPlot({
+    req(tree_match()); tm &lt;- tree_match(); tr &lt;- tm$tree
+    is_match &lt;- master_tips_norm() %in% tm$matched
+    tip_col  &lt;- ifelse(is_match, "#8c6d3f", "#b8b8b8")
+    tip_font &lt;- ifelse(is_match, 2, 1)
+    par(mar = c(1, 1, 3, 1))   # leave room at top for the title
+    plot(tr, tip.color = tip_col, font = tip_font, cex = 0.9)
+    title(main = "Master rodent tree — uploaded species in brown/bold",
+          cex.main = 1.1, line = 1)
+  })
+
+  pruned_tree &lt;- reactive({
+    req(tree_match()); tm &lt;- tree_match(); tr &lt;- tm$tree
+    validate(need(length(tm$matched) &gt;= 3,
+      "Need at least 3 matched species to prune and analyse."))
+    keep_idx &lt;- which(master_tips_norm() %in% tm$matched)
+    drop_idx &lt;- setdiff(seq_along(tr$tip.label), keep_idx)
+    if (length(drop_idx) == 0) tr else drop.tip(tr, tr$tip.label[drop_idx])
+  })
+
+  output$plot_pruned_tree &lt;- renderPlot({
+    req(pruned_tree())
+    par(mar = c(1, 1, 3, 1))   # leave room at top for the title
+    plot(pruned_tree(), tip.color = "#8c6d3f", font = 2, cex = 1.0)
+    title(main = "Pruned tree — matched species only",
+          cex.main = 1.1, line = 1)
+  })
+
+  pgls_fit &lt;- eventReactive(input$run_pgls, {
+    req(trait_data(), pruned_tree(), input$pgls_response, input$pgls_predictor)
+    tr &lt;- pruned_tree(); df &lt;- trait_data()
+    df &lt;- df[df$species_match %in% norm_species(tr$tip.label), , drop = FALSE]
+    df &lt;- df[!duplicated(df$species_match), , drop = FALSE]
+    rownames(df) &lt;- df$species_match
+    tr$tip.label &lt;- norm_species(tr$tip.label)
+
+    resp &lt;- input$pgls_response; pred &lt;- input$pgls_predictor
+    mf &lt;- data.frame(
+      species = rownames(df),
+      y = as.numeric(df[[resp]]),
+      x = if (trait_types()[[pred]] == "numeric") as.numeric(df[[pred]])
+          else factor(df[[pred]]),
+      stringsAsFactors = FALSE
+    )
+    rownames(mf) &lt;- mf$species
+    mf &lt;- mf[complete.cases(mf[, c("y", "x")]), , drop = FALSE]
+
+    # Hard floor: PGLS needs to estimate an intercept, a slope, and a
+    # residual variance, so it cannot run below 4 species and is not
+    # trustworthy much below that. Block clearly rather than fit garbage.
+    validate(need(nrow(mf) &gt;= 4,
+      paste0("Only ", nrow(mf), " species have complete data for this pair. ",
+             "PGLS needs at least 4 (and ideally 10+) to give a meaningful fit. ",
+             "Add more species or choose traits with fewer missing values.")))
+
+    # For a categorical predictor, every group needs at least 2 species,
+    # otherwise gls cannot estimate that group and the fit fails or misleads.
+    if (trait_types()[[pred]] == "categorical") {
+      tab &lt;- table(mf$x)
+      validate(need(all(tab &gt;= 2) &amp;&amp; length(tab) &gt;= 2,
+        paste0("Each category needs at least 2 species (and there must be at ",
+               "least 2 categories). Current counts: ",
+               paste(names(tab), as.integer(tab), sep = "=", collapse = ", "),
+               ". Pick a different predictor or add species.")))
+    }
+
+    tr2 &lt;- drop.tip(tr, setdiff(tr$tip.label, rownames(mf)))
+    mf  &lt;- mf[tr2$tip.label, , drop = FALSE]
+
+    cor_struct &lt;- if (input$pgls_model == "lambda") {
+      corPagel(value = 0.5, phy = tr2, form = ~species, fixed = FALSE)
+    } else {
+      corBrownian(phy = tr2, form = ~species)
+    }
+
+    # Fit PGLS. If corPagel fails to optimise lambda (common on small or
+    # low-signal data), retry with lambda fixed at a middling value so the
+    # student still gets a result instead of a blank screen. Capture any
+    # error message so it can be shown rather than silently swallowed.
+    fit &lt;- tryCatch(
+      gls(y ~ x, data = mf, correlation = cor_struct, method = "ML"),
+      error = function(e) {
+        tryCatch(
+          gls(y ~ x, data = mf,
+              correlation = corPagel(0.5, phy = tr2, form = ~species,
+                                     fixed = TRUE),
+              method = "ML"),
+          error = function(e2)
+            structure(list(msg = conditionMessage(e)), class = "pgls_error")
+        )
+      })
+
+    list(fit = fit, mf = mf, resp = resp, pred = pred,
+         pred_type = trait_types()[[pred]])
+  })
+
+  output$pgls_summary &lt;- renderPrint({
+    validate(need(input$run_pgls &gt; 0, "Choose variables and click 'Run PGLS'."))
+    req(pgls_fit()); res &lt;- pgls_fit()
+    if (inherits(res$fit, "pgls_error")) {
+      cat("PGLS could not be fit for this combination.\n\n")
+      cat("Error reported by gls():\n  ", res$fit$msg, "\n\n")
+      cat("Tips: try the 'Brownian motion' correlation instead of Pagel's\n")
+      cat("lambda, or choose a different response/predictor pair.\n")
+      return(invisible())
+    }
+    cat("=== Phylogenetic Generalized Least Squares (nlme::gls) ===\n")
+    cat("Response   :", res$resp, "\n")
+    cat("Predictor  :", res$pred, " (", res$pred_type, ")\n")
+    cat("Correlation:", input$pgls_model, "\n")
+    cat("N species  :", nrow(res$mf), "\n\n")
+    if (nrow(res$mf) &lt; 10) {
+      cat("NOTE: With fewer than 10 species, PGLS estimates (especially\n")
+      cat("Pagel's lambda and p-values) are unstable. Interpret with caution.\n\n")
+    }
+    print(summary(res$fit))
+  })
+
+  output$plot_pgls &lt;- renderPlot({
+    validate(need(input$run_pgls &gt; 0, "Choose variables and click 'Run PGLS'."))
+    req(pgls_fit()); res &lt;- pgls_fit(); mf &lt;- res$mf
+    validate(need(!inherits(res$fit, "pgls_error"),
+      paste0("PGLS could not be fit: ", if (inherits(res$fit, "pgls_error"))
+             res$fit$msg else "", "\nSee the PGLS summary tab for details.")))
+    mf$species &lt;- rownames(mf)
+
+    if (res$pred_type == "numeric") {
+      # Guard: a numeric predictor needs enough distinct values for a
+      # meaningful regression line. If not, tell the student rather than
+      # drawing a misleading fit.
+      validate(need(length(unique(mf$x)) &gt;= 3,
+        paste0("'", res$pred, "' has fewer than 3 distinct numeric values, ",
+               "so a regression line would be misleading. Pick a predictor ",
+               "with more variation, or treat this variable as categorical.")))
+
+      # PGLS (phylogeny-corrected) coefficients
+      b_pgls &lt;- coef(res$fit)
+      # Ordinary least squares for comparison (ignores phylogeny)
+      ols &lt;- lm(y ~ x, data = mf)
+      b_ols &lt;- coef(ols)
+
+      # Slope + p-value from the PGLS fit for the subtitle
+      sm    &lt;- summary(res$fit)$tTable
+      slope &lt;- signif(b_pgls[2], 3)
+      pval  &lt;- signif(sm[2, "p-value"], 3)
+
+      ggplot(mf, aes(x = x, y = y)) +
+        geom_point(size = 3, colour = "#8c6d3f") +
+        geom_text(aes(label = species), vjust = -0.8, size = 3,
+                  colour = "#5a4a2f") +
+        geom_abline(aes(intercept = b_ols[1], slope = b_ols[2],
+                        colour = "OLS (ignores phylogeny)"),
+                    linewidth = 0.8, linetype = "dashed") +
+        geom_abline(aes(intercept = b_pgls[1], slope = b_pgls[2],
+                        colour = "PGLS (phylogeny-corrected)"),
+                    linewidth = 1.0) +
+        scale_colour_manual(name = NULL,
+          values = c("OLS (ignores phylogeny)" = "#9e9e9e",
+                     "PGLS (phylogeny-corrected)" = "#d7191c")) +
+        labs(x = res$pred, y = res$resp,
+             title = paste0("PGLS regression: ", res$resp, " ~ ", res$pred),
+             subtitle = paste0("PGLS slope = ", slope, ",  p = ", pval,
+                               "   (dashed grey = uncorrected OLS)")) +
+        theme_minimal(base_size = 13) +
+        theme(legend.position = "top")
+
+    } else {
+      # Categorical predictor: boxplot + points, with group means marked
+      grp_means &lt;- aggregate(y ~ x, data = mf, FUN = mean)
+      ggplot(mf, aes(x = x, y = y)) +
+        geom_boxplot(fill = "#f5f0e8", colour = "#8c6d3f", outlier.shape = NA) +
+        geom_jitter(aes(label = species), width = 0.15, size = 3,
+                    colour = "#8c6d3f") +
+        geom_point(data = grp_means, aes(x = x, y = y),
+                   shape = 18, size = 5, colour = "#d7191c") +
+        labs(x = res$pred, y = res$resp,
+             title = paste0("PGLS: ", res$resp, " by ", res$pred),
+             subtitle = "Red diamonds = group means; full PGLS model in summary tab") +
+        theme_minimal(base_size = 13)
+    }
   })
 }
 
-shinyApp(ui, server)</code></pre>
+shinyApp(ui, server)
+
+## file: data/rodent_tree.nwk
+(((((((((Acomys_cahirinus:0.1382843056,(Meriones_unguiculatus:0.02800204875,Psammomys_obesus:0.0296848878):0.1121978921):0.0227791677,(((Mus_caroli:0.02638400566,(Mus_musculus:0.0136324041,Mus_spretus:0.01542311185):0.01386837394):0.02407839264,Mus_pahari:0.053116286):0.04974706463,Rattus_norvegicus:0.1021383193):0.0660010841):0.01969076196,((((Cricetulus_griseus:0.06729005217,Mesocricetus_auratus:0.0848960626):0.04170005264,((Ellobius_lutescens:0.04590864293,Ellobius_talpinus:0.03495902564):0.01942154986,(Microtus_ochrogaster:0.05281982117,Ondatra_zibethicus:0.05086636491):0.002966899986):0.0763945701):0.008003773861,Sigmodon_hispidus:0.1333696569):0.00407724548,(Onychomys_torridus:0.05734972582,Peromyscus_maniculatus:0.04928946319):0.05413249733):0.03086843407):0.01580415896,Cricetomys_gambianus:0.1371154021):0.09852958065,Nannospalax_galili:0.1821816666):0.05696237882,((Allactaga_bullata:0.07499927913,Jaculus_jaculus:0.1039969087):0.06069907657,Zapus_hudsonius:0.169130402):0.1110992824):0.05986592555,(Castor_canadensis:0.166987569,((Dipodomys_ordii:0.01580864689,Dipodomys_stephensi:0.01449715052):0.09534992583,Perognathus_longimembris:0.1296362029):0.1780859406):0.03448311004):0.02918583979,((Aplodontia_rufa:0.1319093287,(((Ictidomys_tridecemlineatus:0.02142507004,Marmota_marmota:0.02688919262):0.002219097627,Spermophilus_dauricus:0.03544022899):0.06862506441,Xerus_inauris:0.07624550886):0.04181380106):0.05464652753,((Glis_glis:0.07402619502,Graphiurus_murinus:0.09908805067):0.009567014479,Muscardinus_avellanarius:0.1528091429):0.1012032602):0.0260923948):0.06351020733,((((((Capromys_pilorides:0.0801684501,Myocastor_coypus:0.08569444379):0.03727889388,(Ctenomys_sociabilis:0.0897671264,Octodon_degus:0.07029034493):0.01973365908):0.07689301864,(Chinchilla_lanigera:0.07242853155,Dinomys_branickii:0.1186457052):0.03614650602):0.02032736571,((((Cavia_aperea:0.0294018307,(Cavia_porcellus:0.008913105622,Cavia_tschudii:0.004080981604):0.008536688377):0.07823794034,(Dolichotis_patagonum:0.06604307957,Hydrochoerus_hydrochaeris:0.08387287411):0.008272791564):0.04306690202,Dasyprocta_punctata:0.08380189301):0.01007753989,Cuniculus_paca:0.08573225279):0.03767207554):0.03583462123,((Fukomys_damarensis:0.1259003583,Heterocephalus_glaber:0.1087960942):0.02753290472,(Petromus_typicus:0.111449952,Thryonomys_swinderianus:0.129455835):0.07533478775):0.02867879499):0.01957175052,Hystrix_cristata:0.1374231196):0.08830370928,Ctenodactylus_gundi:0.2893250334);</code></pre>
 
 
 

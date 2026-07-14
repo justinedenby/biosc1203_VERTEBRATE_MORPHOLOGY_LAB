@@ -1,6 +1,7 @@
 project:
   type: website
-
+  resources:
+    - data/
 website:
   title: "biosc1203_vml"
   navbar:
