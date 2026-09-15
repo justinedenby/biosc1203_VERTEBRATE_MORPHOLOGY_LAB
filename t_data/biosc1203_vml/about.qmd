@@ -58,7 +58,7 @@ library(bslib)
 
 # ── UI ────────────────────────────────────────────────────────────────────────
 ui <- page_navbar(
-  title = "BIOSC1203 Geomorphometric Analysis",
+  title = "Data Analysis",
   theme = bs_theme(bootswatch = "sandstone"),
 
   # ── Section 1: CSV Upload & Preview ────────────────────────────────────────
@@ -104,8 +104,8 @@ ui <- page_navbar(
     )
   ),
 
-  # ── Section 3: TPS Analysis (GPA + PCA) ─────────────────────────────────────
-  nav_panel("3 · TPS Analysis",
+  # ── Section 3: Morphometric Analysis (GPA + PCA) ─────────────────────────────────────
+  nav_panel("3 · Morphometric Analysis",
     layout_sidebar(
       sidebar = sidebar(
         h5("Upload TPS file"),
