@@ -1,5 +1,5 @@
 ---
-title: "BIOSC1203 Geomorphometric Analysis"
+title: "BIOSC1203 Data Analysis"
 format:
   html:
     page-layout: full
@@ -182,9 +182,10 @@ ui <- page_navbar(
                                                   height = "650px")),
           tabPanel("Pruned tree",      plotOutput("plot_pruned_tree",
                                                   height = "550px")),
-          tabPanel("PGLS summary",     verbatimTextOutput("pgls_summary")),
-          tabPanel("PGLS plot",        plotOutput("plot_pgls",
-                                                 height = "500px"))
+          tabPanel("Plot",             plotOutput("plot_pgls",
+                                                 height = "500px")),
+          tabPanel("OLS Summary",      verbatimTextOutput("ols_summary")),
+          tabPanel("PGLS Summary",     verbatimTextOutput("pgls_summary"))
         )
       )
     )
@@ -667,6 +668,33 @@ server <- function(input, output, session) {
 
     list(fit = fit, mf = mf, resp = resp, pred = pred,
          pred_type = trait_types()[[pred]])
+  })
+
+  # Phylogeny-naive comparison model. Uses exactly the same species/data
+  # (res$mf) as the PGLS fit so the two summaries are directly comparable.
+  #   numeric predictor     -> ordinary least squares (stats::lm)
+  #   categorical predictor -> one-way ANOVA          (stats::aov)
+  output$ols_summary <- renderPrint({
+    validate(need(input$run_pgls > 0, "Choose variables and click 'Run PGLS'."))
+    req(pgls_fit()); res <- pgls_fit(); mf <- res$mf
+
+    if (res$pred_type == "numeric") {
+      cat("=== Ordinary Least Squares (phylogeny-naive; stats::lm) ===\n")
+      cat("Response   :", res$resp, "\n")
+      cat("Predictor  :", res$pred, " (", res$pred_type, ")\n")
+      cat("N species  :", nrow(mf), "\n")
+      cat("Model      : y ~ x   (y = response, x = predictor)\n\n")
+      print(summary(lm(y ~ x, data = mf)))
+    } else {
+      cat("=== One-way ANOVA (phylogeny-naive; stats::aov) ===\n")
+      cat("Response   :", res$resp, "\n")
+      cat("Predictor  :", res$pred, " (", res$pred_type, ")\n")
+      cat("N species  :", nrow(mf), "\n")
+      cat("Model      : y ~ x   (y = response, x = predictor)\n\n")
+      print(summary(aov(y ~ x, data = mf)))
+    }
+    cat("\nNOTE: This analysis treats species as independent data points and\n")
+    cat("ignores phylogenetic relatedness. Compare with the PGLS Summary tab.\n")
   })
 
   output$pgls_summary <- renderPrint({
