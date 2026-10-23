@@ -287,20 +287,31 @@ ui &lt;- page_navbar(
         fileInput("trait_file", "Upload trait CSV",
           accept = c(".csv", "text/csv"),
           buttonLabel = "Browse...", placeholder = "No file selected"),
+        h5("Upload phylogeny"),
+        helpText("A single rooted tree with branch lengths, in Newick
+                  (.nwk, .tre, .tree) or NEXUS (.nex) format. Tip labels
+                  should be species names such as genus_species."),
+        fileInput("tree_file", "Upload tree file",
+          accept = c(".nwk", ".newick", ".tre", ".tree", ".nex", ".nexus", ".txt"),
+          buttonLabel = "Browse...", placeholder = "No file selected"),
         helpText("Species names are matched to the tree case-insensitively;
                   spaces are converted to underscores automatically."),
         hr(),
-        h5("PGLS model"),
-        helpText("Fit: response ~ predictor, correcting for phylogeny
-                  via nlme::gls."),
+        h5("Model"),
+        helpText("Continuous response: PGLS via nlme::gls. Binary
+                  (presence/absence) response: phylogenetic logistic
+                  regression (phylolm::phyloglm), or Pagel's test
+                  (fitted with ape::ace) when the predictor is also binary.
+                  A phylogeny-naive analysis is run alongside for comparison."),
         uiOutput("pgls_response_ui"),
+        uiOutput("pgls_event_ui"),
         uiOutput("pgls_predictor_ui"),
-        selectInput("pgls_model", "Phylogenetic correlation",
+        selectInput("pgls_model", "Phylogenetic correlation (continuous responses)",
           choices = c("Pagel's lambda" = "lambda",
                       "Brownian motion" = "brownian"),
           selected = "lambda"),
         hr(),
-        actionButton("run_pgls", "Run PGLS",
+        actionButton("run_pgls", "Run analysis",
                      class = "btn-primary", width = "100%")
       ),
       conditionalPanel(
@@ -312,7 +323,7 @@ ui &lt;- page_navbar(
                                                   height = "650px")),
           tabPanel("Pruned tree",      plotOutput("plot_pruned_tree",
                                                   height = "550px")),
-          tabPanel("Plot",             plotOutput("plot_pgls",
+          tabPanel("PLOT",             plotOutput("plot_pgls",
                                                  height = "500px")),
           tabPanel("OLS Summary",      verbatimTextOutput("ols_summary")),
           tabPanel("PGLS Summary",     verbatimTextOutput("pgls_summary"))
@@ -430,8 +441,27 @@ server &lt;- function(input, output, session) {
     list(A = A, ids = spec_ids, n_lm = p, n_spec = n)
   }
 
+  # The tree now comes from the user's upload (Newick, or NEXUS as a fallback)
+  # rather than a file bundled with the app.
   master_tree &lt;- reactive({
-    tryCatch(read.tree("data/rodent_tree.nwk"), error = function(e) NULL)
+    validate(need(!is.null(input$tree_file),
+      "Upload a tree file (Newick or NEXUS) in the sidebar to continue."))
+    path &lt;- input$tree_file$datapath
+    tr &lt;- tryCatch(suppressWarnings(read.tree(path)), error = function(e) NULL)
+    if (is.null(tr)) tr &lt;- tryCatch(suppressWarnings(read.nexus(path)),
+                                    error = function(e) NULL)
+    validate(
+      need(!is.null(tr),
+        "The tree file could not be read. Upload a Newick (.nwk, .tre, .tree) or NEXUS (.nex) file."),
+      need(!inherits(tr, "multiPhylo"),
+        "The file contains more than one tree. Upload a single tree."),
+      need(!is.null(tr$edge.length),
+        "The tree has no branch lengths, which the phylogenetic models require."),
+      need(all(tr$edge.length &gt;= 0),
+        "The tree has negative branch lengths."),
+      need(length(tr$tip.label) &gt;= 3,
+        "The tree needs at least 3 tips."))
+    tr
   })
 
   # Cache the normalized tip labels once so every downstream output
@@ -617,9 +647,41 @@ server &lt;- function(input, output, session) {
     setdiff(names(df), c("species_raw", "species_match"))
   })
 
-  trait_types &lt;- reactive({
+  # ── Trait classification ────────────────────────────────────────────────────
+  # Every trait column is classified as one of:
+  #   "numeric"     numeric with 3+ distinct values (continuous)
+  #   "binary"      exactly 2 distinct non-missing values: numeric 0/1 codes,
+  #                 TRUE/FALSE, or two-level text such as present/absent
+  #   "categorical" anything else (e.g. text with 3+ levels)
+  trait_kind &lt;- function(v) {
+    n_distinct &lt;- length(unique(v[!is.na(v)]))
+    if (n_distinct == 2) {
+      "binary"
+    } else if (is.numeric(v)) {
+      "numeric"
+    } else {
+      "categorical"
+    }
+  }
+
+  trait_kinds &lt;- reactive({
     df &lt;- trait_data(); cols &lt;- trait_cols()
-    sapply(cols, function(cc) if (is.numeric(df[[cc]])) "numeric" else "categorical")
+    vapply(cols, function(cc) trait_kind(df[[cc]]), character(1))
+  })
+
+  # Collapsed view used for predictors: binary traits are handled as
+  # categorical (group comparison), everything else keeps its type.
+  trait_types &lt;- reactive({
+    k &lt;- trait_kinds()
+    setNames(ifelse(k == "numeric", "numeric", "categorical"), names(k))
+  })
+
+  # The two values of a binary trait, in sorted order (e.g. "0" "1").
+  binary_levels &lt;- function(v) as.character(sort(unique(v[!is.na(v)])))
+
+  # Names of the binary traits (used for labelling).
+  binary_traits &lt;- reactive({
+    k &lt;- trait_kinds(); names(k)[k == "binary"]
   })
 
   output$tbl_traits &lt;- renderUI({
@@ -627,13 +689,34 @@ server &lt;- function(input, output, session) {
     html_table(trait_data() |&gt; select(-species_match))
   })
 
+  # Response may be continuous (PGLS) or binary (logistic / Pagel).
   output$pgls_response_ui &lt;- renderUI({
     req(trait_data())
-    tt &lt;- trait_types(); num_cols &lt;- names(tt)[tt == "numeric"]
-    validate(need(length(num_cols) &gt;= 1,
-      "Need at least one numeric trait to use as the response."))
-    selectInput("pgls_response", "Response (Y, continuous)",
-                choices = num_cols, selected = num_cols[1])
+    kinds    &lt;- trait_kinds()
+    num_cols &lt;- names(kinds)[kinds == "numeric"]
+    bin_cols &lt;- names(kinds)[kinds == "binary"]
+    validate(need(length(num_cols) + length(bin_cols) &gt;= 1,
+      "Need at least one numeric or binary (presence/absence) trait to use as the response."))
+
+    grouped &lt;- list()
+    if (length(num_cols))
+      grouped[["Continuous → PGLS"]] &lt;- as.list(num_cols)
+    if (length(bin_cols))
+      grouped[["Binary (presence/absence) → logistic / Pagel"]] &lt;- as.list(bin_cols)
+
+    selectInput("pgls_response", "Response (Y)",
+                choices = grouped, selected = c(num_cols, bin_cols)[1])
+  })
+
+  # For a binary response: which of the two values is the "event" (coded 1).
+  output$pgls_event_ui &lt;- renderUI({
+    req(trait_data(), input$pgls_response)
+    kinds &lt;- trait_kinds()
+    idx   &lt;- match(input$pgls_response, names(kinds))
+    if (is.na(idx) || kinds[[idx]] != "binary") return(NULL)
+    lv &lt;- binary_levels(trait_data()[[input$pgls_response]])
+    selectInput("pgls_event", "Outcome modeled as 1 (presence / event)",
+                choices = lv, selected = lv[length(lv)])
   })
 
   output$pgls_predictor_ui &lt;- renderUI({
@@ -650,9 +733,9 @@ server &lt;- function(input, output, session) {
     # regression line shows unless they deliberately pick a category.
     grouped &lt;- list()
     if (length(num_choices))
-      grouped[["Numeric → regression line"]] &lt;- as.list(num_choices)
+      grouped[["Numeric → regression line / logistic curve"]] &lt;- as.list(num_choices)
     if (length(cat_choices))
-      grouped[["Categorical → group comparison"]] &lt;- as.list(cat_choices)
+      grouped[["Categorical / binary → group comparison"]] &lt;- as.list(cat_choices)
 
     default &lt;- if (length(num_choices)) num_choices[1] else cat_choices[1]
 
@@ -665,23 +748,46 @@ server &lt;- function(input, output, session) {
 
   # Live hint under the predictor dropdown telling the student what they'll get.
   output$pgls_plot_hint &lt;- renderUI({
-    req(input$pgls_predictor)
-    tt &lt;- trait_types()
-    if (isTRUE(tt[[input$pgls_predictor]] == "numeric")) {
-      div(style = "font-size:0.8rem; color:#5a4a2f; margin-top:-8px;",
-          "Numeric predictor → the PGLS plot shows a fitted regression line.")
+    req(input$pgls_predictor, input$pgls_response)
+    kinds &lt;- trait_kinds()
+    ridx &lt;- match(input$pgls_response, names(kinds))
+    pidx &lt;- match(input$pgls_predictor, names(kinds))
+    req(!is.na(ridx), !is.na(pidx))
+    resp_kind &lt;- kinds[[ridx]]; pred_kind &lt;- kinds[[pidx]]
+
+    msg &lt;- if (resp_kind == "binary" &amp;&amp; pred_kind == "numeric") {
+      "Binary response + numeric predictor → logistic regression (OLS Summary
+       tab) and phylogenetic logistic regression (PGLS Summary tab). The plot
+       shows fitted probability curves."
+    } else if (resp_kind == "binary" &amp;&amp; pred_kind == "binary") {
+      "Binary response + binary predictor → 2×2 table with Fisher's exact test
+       (OLS Summary tab) and Pagel's test of correlated evolution (PGLS Summary
+       tab; a little slower). The plot shows the
+       proportion of species with the outcome in each group."
+    } else if (resp_kind == "binary") {
+      "Binary response + multi-level categorical predictor → r×2 table with
+       Fisher's exact test (OLS Summary tab) and phylogenetic logistic
+       regression (PGLS Summary tab). The plot shows the proportion of species
+       with the outcome in each group."
+    } else if (pred_kind == "numeric") {
+      "Numeric predictor → the PGLS plot shows a fitted regression line."
     } else {
-      div(style = "font-size:0.8rem; color:#5a4a2f; margin-top:-8px;",
-          "Categorical predictor → no regression line (a line through categories
-           isn't meaningful). The plot shows group means instead; the PGLS
-           model is still fit and reported in the summary tab.")
+      bin_note &lt;- if (input$pgls_predictor %in% binary_traits())
+        "This variable has exactly two values, so it is treated as a binary
+         category. " else ""
+      paste0(bin_note,
+             "Categorical predictor → no regression line (a line through
+              categories isn't meaningful). The plot shows group means
+              instead; the PGLS model is still fit and reported in the
+              summary tab.")
     }
+
+    div(style = "font-size:0.8rem; color:#5a4a2f; margin-top:-8px;", msg)
   })
 
   tree_match &lt;- reactive({
-    req(trait_data(), master_tree())
+    req(trait_data())
     tr &lt;- master_tree()
-    validate(need(!is.null(tr), "Master tree could not be loaded from data/rodent_tree.nwk."))
     tips_norm  &lt;- master_tips_norm()
     trait_norm &lt;- trait_data()$species_match
     matched    &lt;- intersect(trait_norm, tips_norm)
@@ -693,6 +799,11 @@ server &lt;- function(input, output, session) {
 
   output$tree_match_summary &lt;- renderPrint({
     req(tree_match()); tm &lt;- tree_match()
+    if (!is.rooted(tm$tree)) {
+      cat("NOTE: this tree is not rooted. Phylogenetic models assume a rooted\n")
+      cat("tree, so results may be unreliable. Root it (e.g. on an outgroup)\n")
+      cat("before uploading.\n\n")
+    }
     cat("Master tree tips:", length(tm$tips_norm), "\n")
     cat("Species in trait CSV:", length(tm$trait_norm), "\n")
     cat("Matched to tree:", length(tm$matched), "\n\n")
@@ -711,7 +822,7 @@ server &lt;- function(input, output, session) {
     tip_font &lt;- ifelse(is_match, 2, 1)
     par(mar = c(1, 1, 3, 1))   # leave room at top for the title
     plot(tr, tip.color = tip_col, font = tip_font, cex = 0.9)
-    title(main = "Master rodent tree — uploaded species in brown/bold",
+    title(main = "Master tree — species in your trait file in brown/bold",
           cex.main = 1.1, line = 1)
   })
 
@@ -732,6 +843,107 @@ server &lt;- function(input, output, session) {
           cex.main = 1.1, line = 1)
   })
 
+  # ── Helpers for the binary-response analyses ───────────────────────────────
+
+  # Install a package on first use (browser-side). Used for the packages that
+  # only binary responses need (phylolm) so they don't slow down the
+  # page load for everyone.
+  ensure_pkg &lt;- function(pkg) {
+    if (requireNamespace(pkg, quietly = TRUE)) return(TRUE)
+    ok &lt;- tryCatch({ webr::install(pkg); TRUE }, error = function(e) FALSE)
+    ok &amp;&amp; requireNamespace(pkg, quietly = TRUE)
+  }
+
+  # Evaluate an expression, collecting warnings instead of printing them.
+  with_warnings &lt;- function(expr) {
+    w &lt;- character()
+    val &lt;- withCallingHandlers(expr,
+      warning = function(cond) {
+        w &lt;&lt;- c(w, conditionMessage(cond))
+        invokeRestart("muffleWarning")
+      })
+    list(value = val, warnings = unique(w))
+  }
+
+  # Shared header lines for the two summary tabs.
+  analysis_header &lt;- function(res) {
+    resp_desc &lt;- if (res$resp_kind == "binary") {
+      paste0(res$resp, " (binary: '", res$event, "' = 1, '",
+             res$nonevent, "' = 0)")
+    } else {
+      paste0(res$resp, " (continuous)")
+    }
+    cat("Response   :", resp_desc, "\n")
+    cat("Predictor  :", res$pred, " (", res$pred_kind, ")\n")
+    if (res$resp_kind == "binary") {
+      cat("N species  :", paste0(nrow(res$mf), " (",
+          sum(res$mf$y == 1), " with '", res$event, "', ",
+          sum(res$mf$y == 0), " with '", res$nonevent, "')"), "\n")
+    } else {
+      cat("N species  :", nrow(res$mf), "\n")
+    }
+  }
+
+  # Caution shown when a binary-response dataset is small or lopsided.
+  binary_caution &lt;- function(res) {
+    n &lt;- nrow(res$mf); n_min &lt;- min(sum(res$mf$y == 1), sum(res$mf$y == 0))
+    if (n &lt; 10 || n_min &lt; 5) {
+      cat("\nCAUTION: binary outcomes carry little information per species. With\n")
+      cat("fewer than 10 species, or fewer than 5 in the rarer outcome, estimates\n")
+      cat("and p-values are unstable. Interpret with great caution.\n")
+    }
+  }
+
+  # Pagel's (1994) test of correlated evolution for two binary traits,
+  # implemented with ape::ace so no extra package is needed.
+  #   Combined states: 1 = x1|y1, 2 = x1|y2, 3 = x2|y1, 4 = x2|y2
+  #   Independent model: 4 rates (x and y each evolve at rates that do not
+  #                      depend on the state of the other trait)
+  #   Dependent model  : 8 rates (every single-trait change has its own rate)
+  #   Simultaneous changes in both traits are not allowed in either model.
+  pagel_test &lt;- function(tree, x, y) {
+    x &lt;- factor(x); y &lt;- factor(y)
+    stopifnot(nlevels(x) == 2, nlevels(y) == 2)
+    lx &lt;- levels(x); ly &lt;- levels(y)
+    lab &lt;- c(paste(lx[1], ly[1], sep = "|"), paste(lx[1], ly[2], sep = "|"),
+             paste(lx[2], ly[1], sep = "|"), paste(lx[2], ly[2], sep = "|"))
+    st &lt;- factor(paste(as.character(x), as.character(y), sep = "|"),
+                 levels = lab)
+
+    dep &lt;- matrix(0L, 4, 4)
+    dep[1, 2] &lt;- 1L; dep[1, 3] &lt;- 2L
+    dep[2, 1] &lt;- 3L; dep[2, 4] &lt;- 4L
+    dep[3, 1] &lt;- 5L; dep[3, 4] &lt;- 6L
+    dep[4, 2] &lt;- 7L; dep[4, 3] &lt;- 8L
+
+    ind &lt;- matrix(0L, 4, 4)
+    ind[1, 2] &lt;- 1L; ind[3, 4] &lt;- 1L   # y: first -&gt; second state
+    ind[2, 1] &lt;- 2L; ind[4, 3] &lt;- 2L   # y: second -&gt; first state
+    ind[1, 3] &lt;- 3L; ind[2, 4] &lt;- 3L   # x: first -&gt; second state
+    ind[3, 1] &lt;- 4L; ind[4, 2] &lt;- 4L   # x: second -&gt; first state
+
+    fit_dep &lt;- ape::ace(unname(st), tree, type = "discrete", model = dep)
+    fit_ind &lt;- ape::ace(unname(st), tree, type = "discrete", model = ind)
+
+    make_Q &lt;- function(fit, M) {
+      Q &lt;- matrix(0, 4, 4, dimnames = list(lab, lab))
+      for (i in 1:4) for (j in 1:4)
+        if (M[i, j] &gt; 0) Q[i, j] &lt;- fit$rates[M[i, j]]
+      diag(Q) &lt;- -rowSums(Q)
+      Q
+    }
+
+    LR_raw &lt;- 2 * (fit_dep$loglik - fit_ind$loglik)
+    df     &lt;- max(dep) - max(ind)
+    LR     &lt;- max(LR_raw, 0)
+    list(labels = lab, logL_ind = fit_ind$loglik, logL_dep = fit_dep$loglik,
+         AIC_ind = -2 * fit_ind$loglik + 2 * max(ind),
+         AIC_dep = -2 * fit_dep$loglik + 2 * max(dep),
+         Q_ind = make_Q(fit_ind, ind), Q_dep = make_Q(fit_dep, dep),
+         LR = LR, LR_raw = LR_raw, df = df,
+         P = pchisq(LR, df, lower.tail = FALSE))
+  }
+
   pgls_fit &lt;- eventReactive(input$run_pgls, {
     req(trait_data(), pruned_tree(), input$pgls_response, input$pgls_predictor)
     tr &lt;- pruned_tree(); df &lt;- trait_data()
@@ -741,15 +953,38 @@ server &lt;- function(input, output, session) {
     tr$tip.label &lt;- norm_species(tr$tip.label)
 
     resp &lt;- input$pgls_response; pred &lt;- input$pgls_predictor
+    kinds     &lt;- trait_kinds()
+    resp_kind &lt;- kinds[[resp]]
+    pred_kind &lt;- kinds[[pred]]
+    pred_type &lt;- trait_types()[[pred]]
+
+    # Binary response: 1 = the chosen "event" (presence), 0 = the other value.
+    event &lt;- NULL; nonevent &lt;- NULL
+    if (resp_kind == "binary") {
+      lv    &lt;- binary_levels(trait_data()[[resp]])
+      event &lt;- input$pgls_event
+      validate(need(!is.null(event) &amp;&amp; event %in% lv,
+        "Choose which outcome of the binary response is coded as 1 (presence)."))
+      nonevent &lt;- setdiff(lv, event)
+    }
+
+    yraw &lt;- df[[resp]]
+    y &lt;- if (resp_kind == "binary") {
+      ifelse(is.na(yraw), NA_integer_, as.integer(as.character(yraw) == event))
+    } else {
+      as.numeric(yraw)
+    }
+
     mf &lt;- data.frame(
       species = rownames(df),
-      y = as.numeric(df[[resp]]),
-      x = if (trait_types()[[pred]] == "numeric") as.numeric(df[[pred]])
+      y = y,
+      x = if (pred_type == "numeric") as.numeric(df[[pred]])
           else factor(df[[pred]]),
       stringsAsFactors = FALSE
     )
     rownames(mf) &lt;- mf$species
     mf &lt;- mf[complete.cases(mf[, c("y", "x")]), , drop = FALSE]
+    if (is.factor(mf$x)) mf$x &lt;- droplevels(mf$x)
 
     # Hard floor: PGLS needs to estimate an intercept, a slope, and a
     # residual variance, so it cannot run below 4 species and is not
@@ -758,6 +993,19 @@ server &lt;- function(input, output, session) {
       paste0("Only ", nrow(mf), " species have complete data for this pair. ",
              "PGLS needs at least 4 (and ideally 10+) to give a meaningful fit. ",
              "Add more species or choose traits with fewer missing values.")))
+
+    # Binary response: both outcomes must be represented, and binary data
+    # need more species than continuous data to say anything.
+    if (resp_kind == "binary") {
+      n_event &lt;- sum(mf$y == 1); n_non &lt;- sum(mf$y == 0)
+      validate(need(nrow(mf) &gt;= 6 &amp;&amp; n_event &gt;= 2 &amp;&amp; n_non &gt;= 2,
+        paste0("A binary response needs both outcomes represented by at least ",
+               "2 species (and at least 6 species overall). Current counts for '",
+               resp, "': ", event, " = ", n_event, ", ", nonevent, " = ", n_non,
+               ". Choose a different response or add species.")))
+      mf$y_lab &lt;- factor(ifelse(mf$y == 1, event, nonevent),
+                         levels = c(nonevent, event))
+    }
 
     # For a categorical predictor, every group needs at least 2 species,
     # otherwise gls cannot estimate that group and the fit fails or misleads.
@@ -773,151 +1021,368 @@ server &lt;- function(input, output, session) {
     tr2 &lt;- drop.tip(tr, setdiff(tr$tip.label, rownames(mf)))
     mf  &lt;- mf[tr2$tip.label, , drop = FALSE]
 
-    cor_struct &lt;- if (input$pgls_model == "lambda") {
-      corPagel(value = 0.5, phy = tr2, form = ~species, fixed = FALSE)
+    # Which analysis applies to this response / predictor combination?
+    analysis &lt;- if (resp_kind != "binary") {
+      "continuous"                       # PGLS (gls)
+    } else if (pred_type == "numeric") {
+      "bin_num"                          # logistic regression / phyloglm
+    } else if (pred_kind == "binary") {
+      "bin_bin"                          # 2x2 table / Pagel's test
     } else {
-      corBrownian(phy = tr2, form = ~species)
+      "bin_cat"                          # r x 2 table / phyloglm
     }
 
-    # Fit PGLS. If corPagel fails to optimise lambda (common on small or
-    # low-signal data), retry with lambda fixed at a middling value so the
-    # student still gets a result instead of a blank screen. Capture any
-    # error message so it can be shown rather than silently swallowed.
-    fit &lt;- tryCatch(
-      gls(y ~ x, data = mf, correlation = cor_struct, method = "ML"),
-      error = function(e) {
-        tryCatch(
-          gls(y ~ x, data = mf,
-              correlation = corPagel(0.5, phy = tr2, form = ~species,
-                                     fixed = TRUE),
-              method = "ML"),
-          error = function(e2)
-            structure(list(msg = conditionMessage(e)), class = "pgls_error")
-        )
-      })
+    fit_warnings &lt;- character()
+    err_obj &lt;- function(e) structure(list(msg = conditionMessage(e)),
+                                     class = "pgls_error")
+
+    if (analysis == "continuous") {
+      cor_struct &lt;- if (input$pgls_model == "lambda") {
+        corPagel(value = 0.5, phy = tr2, form = ~species, fixed = FALSE)
+      } else {
+        corBrownian(phy = tr2, form = ~species)
+      }
+
+      # Fit PGLS. If corPagel fails to optimise lambda (common on small or
+      # low-signal data), retry with lambda fixed at a middling value so the
+      # student still gets a result instead of a blank screen. Capture any
+      # error message so it can be shown rather than silently swallowed.
+      fit &lt;- tryCatch(
+        gls(y ~ x, data = mf, correlation = cor_struct, method = "ML"),
+        error = function(e) {
+          tryCatch(
+            gls(y ~ x, data = mf,
+                correlation = corPagel(0.5, phy = tr2, form = ~species,
+                                       fixed = TRUE),
+                method = "ML"),
+            error = function(e2)
+              structure(list(msg = conditionMessage(e)), class = "pgls_error")
+          )
+        })
+    } else if (analysis %in% c("bin_num", "bin_cat")) {
+      # Phylogenetic logistic regression (phylolm::phyloglm)
+      fw &lt;- with_warnings(tryCatch(
+        withProgress(message = "Fitting phylogenetic logistic regression",
+                     detail = "(the first use also installs phylolm)",
+                     value = 0.5, {
+          if (!ensure_pkg("phylolm"))
+            stop("The 'phylolm' package could not be loaded in this browser session.")
+          phylolm::phyloglm(y ~ x, data = mf, phy = tr2,
+                            method = "logistic_MPLE")
+        }),
+        error = err_obj))
+      fit &lt;- fw$value; fit_warnings &lt;- fw$warnings
+    } else {
+      # Pagel's (1994) test of correlated evolution (ape::ace; see pagel_test)
+      fw &lt;- with_warnings(tryCatch(
+        withProgress(message = "Fitting Pagel's test of correlated evolution",
+                     detail = "(fits two 4-state models; may take a few seconds)",
+                     value = 0.5,
+                     pagel_test(tr2, x = mf$x, y = mf$y_lab)),
+        error = err_obj))
+      fit &lt;- fw$value; fit_warnings &lt;- fw$warnings
+    }
 
     list(fit = fit, mf = mf, resp = resp, pred = pred,
-         pred_type = trait_types()[[pred]])
+         pred_type = pred_type, pred_kind = pred_kind, resp_kind = resp_kind,
+         analysis = analysis, event = event, nonevent = nonevent,
+         fit_warnings = fit_warnings)
   })
 
-  # Phylogeny-naive comparison model. Uses exactly the same species/data
-  # (res$mf) as the PGLS fit so the two summaries are directly comparable.
-  #   numeric predictor     -&gt; ordinary least squares (stats::lm)
-  #   categorical predictor -&gt; one-way ANOVA          (stats::aov)
+  # Phylogeny-naive comparison analysis. Uses exactly the same species/data
+  # (res$mf) as the phylogenetic fit so the two summaries are comparable.
+  #   continuous response, numeric predictor     -&gt; OLS            (lm)
+  #   continuous response, categorical predictor -&gt; one-way ANOVA  (aov)
+  #   binary response, numeric predictor         -&gt; logistic regression (glm)
+  #   binary response, categorical/binary pred.  -&gt; contingency table + Fisher's exact test
   output$ols_summary &lt;- renderPrint({
-    validate(need(input$run_pgls &gt; 0, "Choose variables and click 'Run PGLS'."))
+    validate(need(input$run_pgls &gt; 0, "Choose variables and click 'Run analysis'."))
     req(pgls_fit()); res &lt;- pgls_fit(); mf &lt;- res$mf
 
-    if (res$pred_type == "numeric") {
-      cat("=== Ordinary Least Squares (phylogeny-naive; stats::lm) ===\n")
-      cat("Response   :", res$resp, "\n")
-      cat("Predictor  :", res$pred, " (", res$pred_type, ")\n")
-      cat("N species  :", nrow(mf), "\n")
-      cat("Model      : y ~ x   (y = response, x = predictor)\n\n")
-      print(summary(lm(y ~ x, data = mf)))
+    if (res$analysis == "continuous") {
+      if (res$pred_type == "numeric") {
+        cat("=== Ordinary Least Squares (phylogeny-naive; stats::lm) ===\n")
+        analysis_header(res)
+        cat("Model      : y ~ x   (y = response, x = predictor)\n\n")
+        print(summary(lm(y ~ x, data = mf)))
+      } else {
+        cat("=== One-way ANOVA (phylogeny-naive; stats::aov) ===\n")
+        analysis_header(res)
+        cat("Model      : y ~ x   (y = response, x = predictor)\n\n")
+        print(summary(aov(y ~ x, data = mf)))
+      }
+
+    } else if (res$analysis == "bin_num") {
+      cat("=== Logistic Regression (phylogeny-naive; stats::glm, binomial) ===\n")
+      analysis_header(res)
+      cat("Model      : y ~ x   (y = 1 for '", res$event, "', x = predictor)\n\n", sep = "")
+      gw &lt;- with_warnings(glm(y ~ x, data = mf, family = binomial))
+      print(summary(gw$value))
+      cat("\nOdds ratios with 95% Wald confidence intervals:\n")
+      tryCatch(print(round(exp(cbind(OddsRatio = coef(gw$value),
+                                     confint.default(gw$value))), 3)),
+               error = function(e) cat("  (could not be computed)\n"))
+      cat("\nAn odds ratio above 1 means higher predictor values go with greater\n")
+      cat("odds of '", res$event, "'; below 1 means lower odds.\n", sep = "")
+      if (length(gw$warnings)) {
+        cat("\nWARNINGS from glm():\n")
+        for (w in gw$warnings) cat("  -", w, "\n")
+        if (any(grepl("0 or 1", gw$warnings)))
+          cat("\nThis usually means the predictor (almost) perfectly separates the two\noutcomes ('separation'). The coefficients and p-values are then\nunreliable; rely on the plot and be cautious.\n")
+      }
+      binary_caution(res)
+
     } else {
-      cat("=== One-way ANOVA (phylogeny-naive; stats::aov) ===\n")
-      cat("Response   :", res$resp, "\n")
-      cat("Predictor  :", res$pred, " (", res$pred_type, ")\n")
-      cat("N species  :", nrow(mf), "\n")
-      cat("Model      : y ~ x   (y = response, x = predictor)\n\n")
-      print(summary(aov(y ~ x, data = mf)))
+      cat("=== Contingency table + Fisher's exact test (phylogeny-naive) ===\n")
+      analysis_header(res)
+      cat("\n")
+      tab &lt;- table(mf$x, mf$y_lab, dnn = c(res$pred, res$resp))
+      cat("Counts of species (rows = predictor, columns = response):\n")
+      print(tab)
+      cat("\nRow proportions:\n")
+      print(round(prop.table(tab, 1), 3))
+      ex &lt;- tryCatch(suppressWarnings(chisq.test(tab)$expected),
+                     error = function(e) NULL)
+      if (!is.null(ex)) {
+        cat("\nExpected counts if the two traits were independent:\n")
+        print(round(ex, 2))
+        if (any(ex &lt; 5))
+          cat("Some expected counts are below 5, so Fisher's exact test (below)\nis preferred over a chi-square test.\n")
+      }
+      ft &lt;- tryCatch(fisher.test(tab), error = function(e)
+        tryCatch(fisher.test(tab, simulate.p.value = TRUE, B = 1e5),
+                 error = function(e2) NULL))
+      cat("\n")
+      if (is.null(ft)) cat("Fisher's exact test could not be computed.\n") else print(ft)
+      binary_caution(res)
     }
     cat("\nNOTE: This analysis treats species as independent data points and\n")
     cat("ignores phylogenetic relatedness. Compare with the PGLS Summary tab.\n")
   })
 
   output$pgls_summary &lt;- renderPrint({
-    validate(need(input$run_pgls &gt; 0, "Choose variables and click 'Run PGLS'."))
+    validate(need(input$run_pgls &gt; 0, "Choose variables and click 'Run analysis'."))
     req(pgls_fit()); res &lt;- pgls_fit()
-    if (inherits(res$fit, "pgls_error")) {
-      cat("PGLS could not be fit for this combination.\n\n")
-      cat("Error reported by gls():\n  ", res$fit$msg, "\n\n")
-      cat("Tips: try the 'Brownian motion' correlation instead of Pagel's\n")
-      cat("lambda, or choose a different response/predictor pair.\n")
-      return(invisible())
+
+    if (res$analysis == "continuous") {
+      if (inherits(res$fit, "pgls_error")) {
+        cat("PGLS could not be fit for this combination.\n\n")
+        cat("Error reported by gls():\n  ", res$fit$msg, "\n\n")
+        cat("Tips: try the 'Brownian motion' correlation instead of Pagel's\n")
+        cat("lambda, or choose a different response/predictor pair.\n")
+        return(invisible())
+      }
+      cat("=== Phylogenetic Generalized Least Squares (nlme::gls) ===\n")
+      cat("Response   :", res$resp, "\n")
+      cat("Predictor  :", res$pred, " (", res$pred_type, ")\n")
+      cat("Correlation:", input$pgls_model, "\n")
+      cat("N species  :", nrow(res$mf), "\n\n")
+      if (nrow(res$mf) &lt; 10) {
+        cat("NOTE: With fewer than 10 species, PGLS estimates (especially\n")
+        cat("Pagel's lambda and p-values) are unstable. Interpret with caution.\n\n")
+      }
+      print(summary(res$fit))
+
+    } else if (res$analysis %in% c("bin_num", "bin_cat")) {
+      if (inherits(res$fit, "pgls_error")) {
+        cat("Phylogenetic logistic regression could not be fit for this combination.\n\n")
+        cat("Error reported:\n  ", res$fit$msg, "\n\n")
+        cat("Tips: binary data carry little information. Try a different predictor,\n")
+        cat("make sure both outcomes are well represented, or add more species.\n")
+        return(invisible())
+      }
+      cat("=== Phylogenetic Logistic Regression (phylolm::phyloglm) ===\n")
+      analysis_header(res)
+      cat("Method     : logistic_MPLE (phyloglm default)\n\n")
+      print(summary(res$fit))
+      cat("\nalpha describes how quickly phylogenetic correlation decays along the\n")
+      cat("tree: a small alpha means strong phylogenetic signal in the outcome, a\n")
+      cat("very large alpha means little signal (results approach ordinary\n")
+      cat("logistic regression).\n")
+      if (res$analysis == "bin_cat")
+        cat("\nFor a multi-level predictor, each coefficient compares that level\nwith the first (reference) level; phyloglm gives no single overall test.\n")
+      if (length(res$fit_warnings)) {
+        cat("\nWARNINGS from phyloglm():\n")
+        for (w in res$fit_warnings) cat("  -", w, "\n")
+      }
+      binary_caution(res)
+
+    } else {
+      if (inherits(res$fit, "pgls_error")) {
+        cat("Pagel's test could not be fit for this combination.\n\n")
+        cat("Error reported:\n  ", res$fit$msg, "\n\n")
+        cat("Tips: Pagel's test needs enough changes between states across the tree.\n")
+        cat("With few species or rare states the optimisation can fail.\n")
+        return(invisible())
+      }
+      cat("=== Pagel (1994) test of correlated evolution (ape::ace) ===\n")
+      analysis_header(res)
+      f &lt;- res$fit
+      cat("\nCombined states are written predictor|response:\n  ",
+          paste(f$labels, collapse = "    "), "\n\n")
+      cat("Independent model (4 rates): log-likelihood =",
+          round(f$logL_ind, 3), "  AIC =", round(f$AIC_ind, 3), "\n")
+      cat("Dependent model   (8 rates): log-likelihood =",
+          round(f$logL_dep, 3), "  AIC =", round(f$AIC_dep, 3), "\n")
+      cat("\nTransition rates, independent model (rows = from, columns = to):\n")
+      print(round(f$Q_ind, 4))
+      cat("\nTransition rates, dependent model (rows = from, columns = to):\n")
+      print(round(f$Q_dep, 4))
+      cat("\nLikelihood-ratio test, dependent vs. independent evolution:\n")
+      cat("  LR =", round(f$LR, 3), " on", f$df, "df,   p =", signif(f$P, 3), "\n")
+      if (f$LR_raw &lt; -1e-6) {
+        cat("\nWARNING: the dependent model (which contains the independent model)\n")
+        cat("came out with a LOWER likelihood, so the optimiser did not find the\n")
+        cat("best fit. Treat this result as unreliable.\n")
+      }
+      cat("\nHow to read this: the test compares a model where the two traits evolve\n")
+      cat("independently with one where the rate of change in each trait depends on\n")
+      cat("the state of the other. A small p-value means the dependent model fits\n")
+      cat("significantly better, i.e. the traits show correlated evolution. This is\n")
+      cat("a different question from the contingency-table test on the OLS Summary\n")
+      cat("tab, which only asks whether the two traits are associated across species.\n")
+      if (length(res$fit_warnings)) {
+        cat("\nWARNINGS:\n")
+        for (w in res$fit_warnings) cat("  -", w, "\n")
+      }
+      binary_caution(res)
     }
-    cat("=== Phylogenetic Generalized Least Squares (nlme::gls) ===\n")
-    cat("Response   :", res$resp, "\n")
-    cat("Predictor  :", res$pred, " (", res$pred_type, ")\n")
-    cat("Correlation:", input$pgls_model, "\n")
-    cat("N species  :", nrow(res$mf), "\n\n")
-    if (nrow(res$mf) &lt; 10) {
-      cat("NOTE: With fewer than 10 species, PGLS estimates (especially\n")
-      cat("Pagel's lambda and p-values) are unstable. Interpret with caution.\n\n")
-    }
-    print(summary(res$fit))
   })
 
   output$plot_pgls &lt;- renderPlot({
-    validate(need(input$run_pgls &gt; 0, "Choose variables and click 'Run PGLS'."))
+    validate(need(input$run_pgls &gt; 0, "Choose variables and click 'Run analysis'."))
     req(pgls_fit()); res &lt;- pgls_fit(); mf &lt;- res$mf
-    validate(need(!inherits(res$fit, "pgls_error"),
-      paste0("PGLS could not be fit: ", if (inherits(res$fit, "pgls_error"))
-             res$fit$msg else "", "\nSee the PGLS summary tab for details.")))
     mf$species &lt;- rownames(mf)
+    failed &lt;- inherits(res$fit, "pgls_error")
 
-    if (res$pred_type == "numeric") {
-      # Guard: a numeric predictor needs enough distinct values for a
-      # meaningful regression line. If not, tell the student rather than
-      # drawing a misleading fit.
-      validate(need(length(unique(mf$x)) &gt;= 3,
-        paste0("'", res$pred, "' has fewer than 3 distinct numeric values, ",
-               "so a regression line would be misleading. Pick a predictor ",
-               "with more variation, or treat this variable as categorical.")))
+    if (res$analysis == "continuous") {
+      validate(need(!failed,
+        paste0("PGLS could not be fit: ", if (failed) res$fit$msg else "",
+               "\nSee the PGLS summary tab for details.")))
+      if (res$pred_type == "numeric") {
+        # Guard: a numeric predictor needs enough distinct values for a
+        # meaningful regression line. If not, tell the student rather than
+        # drawing a misleading fit.
+        validate(need(length(unique(mf$x)) &gt;= 3,
+          paste0("'", res$pred, "' has fewer than 3 distinct numeric values, ",
+                 "so a regression line would be misleading. Pick a predictor ",
+                 "with more variation, or treat this variable as categorical.")))
 
-      # PGLS (phylogeny-corrected) coefficients
-      b_pgls &lt;- coef(res$fit)
-      # Ordinary least squares for comparison (ignores phylogeny)
-      ols &lt;- lm(y ~ x, data = mf)
-      b_ols &lt;- coef(ols)
+        # PGLS (phylogeny-corrected) coefficients
+        b_pgls &lt;- coef(res$fit)
+        # Ordinary least squares for comparison (ignores phylogeny)
+        ols &lt;- lm(y ~ x, data = mf)
+        b_ols &lt;- coef(ols)
 
-      # Slope + p-value from the PGLS fit for the subtitle
-      sm    &lt;- summary(res$fit)$tTable
-      slope &lt;- signif(b_pgls[2], 3)
-      pval  &lt;- signif(sm[2, "p-value"], 3)
+        # Slope + p-value from the PGLS fit for the subtitle
+        sm    &lt;- summary(res$fit)$tTable
+        slope &lt;- signif(b_pgls[2], 3)
+        pval  &lt;- signif(sm[2, "p-value"], 3)
 
+        ggplot(mf, aes(x = x, y = y)) +
+          geom_point(size = 3, colour = "#8c6d3f") +
+          geom_text(aes(label = species), vjust = -0.8, size = 3,
+                    colour = "#5a4a2f") +
+          geom_abline(aes(intercept = b_ols[1], slope = b_ols[2],
+                          colour = "OLS (ignores phylogeny)"),
+                      linewidth = 0.8, linetype = "dashed") +
+          geom_abline(aes(intercept = b_pgls[1], slope = b_pgls[2],
+                          colour = "PGLS (phylogeny-corrected)"),
+                      linewidth = 1.0) +
+          scale_colour_manual(name = NULL,
+            values = c("OLS (ignores phylogeny)" = "#9e9e9e",
+                       "PGLS (phylogeny-corrected)" = "#d7191c")) +
+          labs(x = res$pred, y = res$resp,
+               title = paste0("PGLS regression: ", res$resp, " ~ ", res$pred),
+               subtitle = paste0("PGLS slope = ", slope, ",  p = ", pval,
+                                 "   (dashed grey = uncorrected OLS)")) +
+          theme_minimal(base_size = 13) +
+          theme(legend.position = "top")
+
+      } else {
+        # Categorical predictor: boxplot + points, with group means marked
+        grp_means &lt;- aggregate(y ~ x, data = mf, FUN = mean)
+        ggplot(mf, aes(x = x, y = y)) +
+          geom_boxplot(fill = "#f5f0e8", colour = "#8c6d3f", outlier.shape = NA) +
+          geom_jitter(aes(label = species), width = 0.15, size = 3,
+                      colour = "#8c6d3f") +
+          geom_point(data = grp_means, aes(x = x, y = y),
+                     shape = 18, size = 5, colour = "#d7191c") +
+          labs(x = res$pred, y = res$resp,
+               title = paste0("PGLS: ", res$resp, " by ", res$pred),
+               subtitle = "Red diamonds = group means; full PGLS model in summary tab") +
+          theme_minimal(base_size = 13)
+      }
+
+    } else if (res$analysis == "bin_num") {
+      # Binary response vs numeric predictor: points at 0/1 plus fitted
+      # probability curves (naive logistic and phylogenetic logistic).
+      gl &lt;- suppressWarnings(glm(y ~ x, data = mf, family = binomial))
+      xs &lt;- seq(min(mf$x), max(mf$x), length.out = 200)
+      curves &lt;- data.frame(
+        x = xs,
+        p = as.numeric(plogis(coef(gl)[1] + coef(gl)[2] * xs)),
+        model = "Logistic (ignores phylogeny)")
+      subtitle &lt;- "Dashed grey = logistic regression ignoring phylogeny"
+      if (!failed) {
+        b &lt;- coef(res$fit)
+        curves &lt;- rbind(curves, data.frame(
+          x = xs,
+          p = as.numeric(plogis(b[1] + b[2] * xs)),
+          model = "Phylogenetic logistic"))
+        sub2 &lt;- tryCatch({
+          cf &lt;- summary(res$fit)$coefficients
+          paste0("Phylogenetic logistic slope = ",
+                 signif(cf[2, "Estimate"], 3), ",  p = ",
+                 signif(cf[2, "p.value"], 3),
+                 "   (dashed grey = logistic ignoring phylogeny)")
+        }, error = function(e) NULL)
+        if (!is.null(sub2)) subtitle &lt;- sub2
+      } else {
+        subtitle &lt;- paste0(subtitle, "; phylogenetic fit failed (see PGLS Summary tab)")
+      }
       ggplot(mf, aes(x = x, y = y)) +
-        geom_point(size = 3, colour = "#8c6d3f") +
-        geom_text(aes(label = species), vjust = -0.8, size = 3,
-                  colour = "#5a4a2f") +
-        geom_abline(aes(intercept = b_ols[1], slope = b_ols[2],
-                        colour = "OLS (ignores phylogeny)"),
-                    linewidth = 0.8, linetype = "dashed") +
-        geom_abline(aes(intercept = b_pgls[1], slope = b_pgls[2],
-                        colour = "PGLS (phylogeny-corrected)"),
-                    linewidth = 1.0) +
+        geom_point(position = position_jitter(width = 0, height = 0.03, seed = 1),
+                   size = 3, colour = "#8c6d3f") +
+        geom_line(data = curves, aes(x = x, y = p, colour = model,
+                                     linetype = model), linewidth = 1) +
         scale_colour_manual(name = NULL,
-          values = c("OLS (ignores phylogeny)" = "#9e9e9e",
-                     "PGLS (phylogeny-corrected)" = "#d7191c")) +
-        labs(x = res$pred, y = res$resp,
-             title = paste0("PGLS regression: ", res$resp, " ~ ", res$pred),
-             subtitle = paste0("PGLS slope = ", slope, ",  p = ", pval,
-                               "   (dashed grey = uncorrected OLS)")) +
+          values = c("Logistic (ignores phylogeny)" = "#9e9e9e",
+                     "Phylogenetic logistic"        = "#d7191c")) +
+        scale_linetype_manual(name = NULL,
+          values = c("Logistic (ignores phylogeny)" = "dashed",
+                     "Phylogenetic logistic"        = "solid")) +
+        scale_y_continuous(breaks = c(0, 0.5, 1),
+          labels = c(paste0(res$nonevent, " (0)"), "0.5",
+                     paste0(res$event, " (1)"))) +
+        labs(x = res$pred, y = paste0("Probability of '", res$event, "'"),
+             title = paste0("Logistic regression: ", res$resp, " ~ ", res$pred),
+             subtitle = subtitle) +
         theme_minimal(base_size = 13) +
         theme(legend.position = "top")
 
     } else {
-      # Categorical predictor: boxplot + points, with group means marked
-      grp_means &lt;- aggregate(y ~ x, data = mf, FUN = mean)
-      ggplot(mf, aes(x = x, y = y)) +
-        geom_boxplot(fill = "#f5f0e8", colour = "#8c6d3f", outlier.shape = NA) +
-        geom_jitter(aes(label = species), width = 0.15, size = 3,
-                    colour = "#8c6d3f") +
-        geom_point(data = grp_means, aes(x = x, y = y),
-                   shape = 18, size = 5, colour = "#d7191c") +
-        labs(x = res$pred, y = res$resp,
-             title = paste0("PGLS: ", res$resp, " by ", res$pred),
-             subtitle = "Red diamonds = group means; full PGLS model in summary tab") +
-        theme_minimal(base_size = 13)
+      # Binary response vs binary / categorical predictor: stacked
+      # proportions per predictor group, labelled with species counts.
+      ggplot(mf, aes(x = x, fill = y_lab)) +
+        geom_bar(position = "fill", colour = "#8c6d3f") +
+        geom_text(stat = "count", aes(label = after_stat(count)),
+                  position = position_fill(vjust = 0.5), size = 5,
+                  colour = "#3b2f1a") +
+        scale_fill_manual(name = res$resp,
+          values = setNames(c("#f5f0e8", "#d9b87c"),
+                            c(res$nonevent, res$event))) +
+        labs(x = res$pred, y = "Proportion of species",
+             title = paste0(res$resp, " by ", res$pred),
+             subtitle = "Numbers = species counts; tests are in the two summary tabs") +
+        theme_minimal(base_size = 13) +
+        theme(legend.position = "top")
     }
   })
 }
 
 shinyApp(ui, server)
-
-## file: data/rodent_tree.nwk
-(((((((((Acomys_cahirinus:0.1382843056,(Meriones_unguiculatus:0.02800204875,Psammomys_obesus:0.0296848878):0.1121978921):0.0227791677,(((Mus_caroli:0.02638400566,(Mus_musculus:0.0136324041,Mus_spretus:0.01542311185):0.01386837394):0.02407839264,Mus_pahari:0.053116286):0.04974706463,Rattus_norvegicus:0.1021383193):0.0660010841):0.01969076196,((((Cricetulus_griseus:0.06729005217,Mesocricetus_auratus:0.0848960626):0.04170005264,((Ellobius_lutescens:0.04590864293,Ellobius_talpinus:0.03495902564):0.01942154986,(Microtus_ochrogaster:0.05281982117,Ondatra_zibethicus:0.05086636491):0.002966899986):0.0763945701):0.008003773861,Sigmodon_hispidus:0.1333696569):0.00407724548,(Onychomys_torridus:0.05734972582,Peromyscus_maniculatus:0.04928946319):0.05413249733):0.03086843407):0.01580415896,Cricetomys_gambianus:0.1371154021):0.09852958065,Nannospalax_galili:0.1821816666):0.05696237882,((Allactaga_bullata:0.07499927913,Jaculus_jaculus:0.1039969087):0.06069907657,Zapus_hudsonius:0.169130402):0.1110992824):0.05986592555,(Castor_canadensis:0.166987569,((Dipodomys_ordii:0.01580864689,Dipodomys_stephensi:0.01449715052):0.09534992583,Perognathus_longimembris:0.1296362029):0.1780859406):0.03448311004):0.02918583979,((Aplodontia_rufa:0.1319093287,(((Ictidomys_tridecemlineatus:0.02142507004,Marmota_marmota:0.02688919262):0.002219097627,Spermophilus_dauricus:0.03544022899):0.06862506441,Xerus_inauris:0.07624550886):0.04181380106):0.05464652753,((Glis_glis:0.07402619502,Graphiurus_murinus:0.09908805067):0.009567014479,Muscardinus_avellanarius:0.1528091429):0.1012032602):0.0260923948):0.06351020733,((((((Capromys_pilorides:0.0801684501,Myocastor_coypus:0.08569444379):0.03727889388,(Ctenomys_sociabilis:0.0897671264,Octodon_degus:0.07029034493):0.01973365908):0.07689301864,(Chinchilla_lanigera:0.07242853155,Dinomys_branickii:0.1186457052):0.03614650602):0.02032736571,((((Cavia_aperea:0.0294018307,(Cavia_porcellus:0.008913105622,Cavia_tschudii:0.004080981604):0.008536688377):0.07823794034,(Dolichotis_patagonum:0.06604307957,Hydrochoerus_hydrochaeris:0.08387287411):0.008272791564):0.04306690202,Dasyprocta_punctata:0.08380189301):0.01007753989,Cuniculus_paca:0.08573225279):0.03767207554):0.03583462123,((Fukomys_damarensis:0.1259003583,Heterocephalus_glaber:0.1087960942):0.02753290472,(Petromus_typicus:0.111449952,Thryonomys_swinderianus:0.129455835):0.07533478775):0.02867879499):0.01957175052,Hystrix_cristata:0.1374231196):0.08830370928,Ctenodactylus_gundi:0.2893250334);</code></pre>
+</code></pre>
 
 
 
